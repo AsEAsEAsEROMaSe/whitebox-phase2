@@ -9,7 +9,7 @@ Conventions:
 - **ceiling**: the branch was closed by substituting the exact quantity (an oracle), so no implementation can do better than the number shown.
 - **mechanism**: closed by a measured cause, not by its price.
 - **circumstance**: closed by price, sample size or another condition; the reason to return is named.
-- Stands are under `stands_phase1/side66/` (Phase 1) and `stands/` (Phase 2).
+- Stands are under `stands_phase1/side66/` (Phase 1) and `stands/` (Phase 2). Every experiment with its numbers is in [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
 ## The four laws that killed most branches
 

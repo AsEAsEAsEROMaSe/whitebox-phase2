@@ -1,0 +1,552 @@
+# Experiments log
+
+Every experiment recorded in the project's working notes across both phases of the ARC White-Box Estimation Challenge 2026, in chronological order, one entry per experiment.
+
+- Phase 1: random bias-free ReLU MLPs 256 wide and 32 deep. Phase 2: 1024 wide and 16 deep.
+- `×` is a factor on MSE or on a closure error; greater than 1 is better unless the entry says "worse".
+- Percentages without a qualifier are relative errors of the estimated output mean.
+- "Oracle" means the true value of a quantity was substituted, so the number is an upper bound, not a method.
+- Entries record verdicts as they stood when measured; later corrections appear as their own entries further down.
+- For a one-row-per-branch summary see [CLOSED_BRANCHES.md](CLOSED_BRANCHES.md); the reports are in [writeup/](writeup/).
+
+## Phase 1 (256 wide, 32 deep)
+
+### June to early July 2026: first map of the problem
+
+- **Rank-one co-skewness at depth.** The co-skewness of deep layers is rank one along the mean direction μ, so a cheap three-point channel for κ3 may exist; at that point a working closure had not been shown.
+- **Factorized cumulant propagation identified.** The leading approach on the board is factorized K≥3 cumulant propagation as in the ARC paper; two of our earlier assumptions about it were wrong and were corrected.
+- **K=4 versus our baseline.** A K=4 oracle reaches 4.34e-7, ×7 over our sampling baseline v2 (3.09e-6). A K=2 chain written from scratch with non-local κ3 diagrams (source plus transport) matched the truth with corr 0.89 but plateaued at attainable accuracy.
+- **Saddlepoint, copula, herding, random-matrix and Plefka closures.** The saddlepoint closes the covariance to 2.5% with four cumulants where Edgeworth gives 0%, but the gain does not survive propagation through depth. K=4 is the optimum of the series. Oracle numbers (4.51e-8) are not a method; the only real number at that point was v2 at 3.09e-6.
+- **Per-step κ3 transport is exact.** Fresh corr 0.98, carried corr 0.99 with scale 1.00. A proposed missing transport term (C1) was refuted by a pre-test. The real wall is the full-rank κ3 tensor, O(n³), not the formula. Neurons straddling the kink form a hypersensitive frontier.
+- **Two-channel lock.** Exact covariance and exact marginal κ3, κ4 together give 2.49e-7, but exact covariance alone makes things worse (×0.6, error cancellation) and the marginal cumulants alone reach only Monte Carlo parity (×2.86). This is why every single-channel attack stalls at MC level.
+
+### July 2026: sampling estimators, control variates, structure of the network
+
+- **Depth control variate ceiling.** A deep tap at layer 10 predicts 76% of the final fluctuation, at layer 20 91%; the production estimator captured only 32%. The limit is the implementation (fit, t, projection), not the structure.
+- **Analytic β path.** Computing the regression coefficient analytically (Cov(features, a^L) from the engine) with a full quadratic and a deep tap reduces the residual factor g from 0.78 to 0.13 at N=6000.
+- **Inverted network equals antithetic sampling.** The anti-ReLU network b^L(x) = −a^L(−x) is bitwise identical to antithetic sampling; E[a] + E[b] = 0 exactly. The common noise mode is even, so it survives antithetics.
+- **Anchor depth sensitivity.** The useful lever is an exact anchor on the deep tap (layer 20), not layer 10; the engine degrades with depth and g is hypersensitive (3.7% covariance error doubles g).
+- **The common noise mode is the mean direction.** The shared fluctuation is the direction of the mean activation times a scalar loudness; what is shared between networks is trivial.
+- **The mean self-averages, but direction-dependently.** Random perturbation of 1% of weights moves the output by 0.018%, a coherent DC mode of 0.4% moves it by 8% (about 1000 times stronger). The wall is correlations plus the common mode.
+- **Radial Rao-Blackwellisation.** Using ReLU homogeneity a = r·a(x̂) gives about 3% variance reduction over plain antithetics, but is fully redundant with ZCA whitening (+0.0%).
+- **Hermite and kurtosis control variates.** He4 explains less than 1% of the residual variance, even He2 only 16%; the residual of v2 is full-rank and high-order (rank(C4) ≈ 256). Both bias and variance are irreducible by this route.
+- **Closure jump at layer two.** Without ReLU the analytic MSE is 0 bitwise. The relative MSE of v2 is flat with depth, while the analytic closure pays most at k=2: one closure step costs 1.7e-5, the next 30 layers only ×9. The problem is not accumulation.
+- **Arcsine law as a free anchor.** The arcsine law gives an exact, free anchor for quadratic gate features of the first layer, the only such anchor found; but after ZCA these features carry zero information, and the control variate adds noise proportional to the number of features (+4% at 300, +12.5% at 1176).
+- **Switching ReLU on one at a time.** The answer is whittled, not built: from zero a jump of 1e9 (squared norm), then every ReLU halves it, 2^30 to reach one. A telescoping estimator loses by 2e11. Any truncation of this ladder is doomed arithmetically.
+- **Skeleton without weights fails.** An orthogonalised network correlates with the original only 0.080; the spectrum (stretches) is the answer. A quarter of the way already drops the correlation to 0.45.
+- **Gate-pattern microgroups.** Structure is real (Hamming distance 16% instead of 50% for coins), but stratification hits an exponential wall: 12 gates give 1.6%, 50% would need about 27 gates, 134 million groups.
+- **Gates are pinned, not coins.** The distribution of the open probability p_i is bimodal: on layer 31 three quarters of neurons are pinned (p<0.02 or p>0.98), only 3% behave like coins. For a pinned neuron the mean passes through ReLU exactly; the closure only matters for the live minority.
+- **v2 removes orders exactly.** Antithetics remove the first order bitwise, ZCA removes the second exactly. Measured in closed form: second order is 51…57% of the even variance, fourth and higher 43…49%. The ZCA ceiling of 2.06…2.33× matches the real gain of v2 (1.5…2.06×).
+- **No cheap handle on the fourth order.** The whole two-index part of the fourth order (He4, He3He1, He2He2, 98 176 features in closed form) explains −0.4%/−0.8%, i.e. zero, while the same code on the second order gives 0.50/0.46. The 43…49% of higher order lives in three- and four-index structures.
+- **Single-neuron marginal closure.** ReLU acts per coordinate, so only the marginal (m_i, s_i) enters the answer, 512 numbers instead of 65 536. The bias of marginal Gaussianity is 1.1e-6 (below the MSE of 2.5e-6), confirmed twice, but the variance gain is zero.
+- **Arccos-kernel control variate.** Using the values a¹ = relu(xW₀) with exact means gives 0.94…1.02×, a clean zero. Side results: the exact free anchor interacts with ZCA (adds bias² 2.3e-7); v2 itself has no bias floor (ZCA bias is O(1/N)).
+- **Arcsine family audit.** The s_i s_j family is the only truly free anchor; out-of-sample R² 0.032/0.034 on the scalar α holds. Two other numbers (0.081 low-rank, 0.011 beyond ZCA) were invalid: directions had been computed on all data before the split.
+- **"Depth information equals cost" refuted by audit.** The claimed law R²(ℓ) ≈ ℓ/32 was an artefact: 48 features on 300 batches bias out-of-sample R² down by F/n = 0.16 (measured −0.17). The correct break-even is 2ℓ/(32+ℓ).
+- **Anchor cost identity.** The identity holds only for an anchor that costs a full sample (c=1); the model could not express a cheaper anchor. For c=1/4, R²=0.7 the factor is 0.797; for c=1/8, R²=0.9 it is 0.398, so the class "control variate with a partial anchor" is open in principle.
+- **Closure correction ceiling was an instrument floor.** The engine zeroed the layer-0 corrections (analytically right, numerically wrong in fp32 Gauss-Hermite quadrature against an 8M-sample truth), and the telescope propagated the difference through 32 layers. An fp64 replica removes the floor.
+- **Deterministic cubature.** Audited: weights sum to 1, node counts match. The headline 105× was one seed; three seeds give 35× (spread ×3). The node increase was a change of Stroud rule degree (3 to 5), not scaling within one family.
+- **"The depth map is flat" was invalid.** A double logarithm forced the slope to zero regardless of the data; the log was truncated and columns were mixed.
+- **Poisson reduction to a surface integral.** The mathematics is correct (inside a cell a^L is linear, so the divergence vanishes and only surface deltas remain); a positive control gives 0.000. The quoted "2438σ" was a tautology: σ was the MC error of the answer itself.
+- **Decomposition of the v2 synergy.** Odd part 51.4% (antithetics), even quadratic 23.4% (ZCA), even fourth and higher 25.2% (nothing removes it: the ceiling of v2). Antithetics net only 1.03× because they halve the number of independent draws.
+- **Rotations of the sample.** The 3.25× spread over 200 rotations of the same sample is real (pure MC fluctuation would give 1.31×), but with fixed X the error is deterministic and lives in the fourth-order residual, so there is no way to pick a good rotation in advance.
+- **Dead-neuron pruning.** 25…28% of layer-31 neurons never open; removing them is exact (5.7e-15). Real grader runs on 16 networks: 3.62e-7 → 2.81e-7 (×0.776), raw MSE ×0.713. The lever is the cost of a sample, not its variance.
+- **Antisymmetric generators.** The signal is real (about 1%), but the measured R² 0.0034…0.0134 at K=1…8 is far below the break-even R² > K/(1+K) ≥ 0.50.
+- **Half-gate delta expansion.** Earlier conclusions were invalid (a tautology of oddness, a misread column, a 0/0). The premise "mean p = 0.50" averages a bimodal distribution with 75…81% pinned neurons, so δ = g − ½ = ±0.48 is deterministic, not small.
+- **Fluctuation-dissipation / Stein covariance estimator.** Closed from both sides: the claimed 40× had no log, its own numbers gave 15× by RMS; the cost is one backward pass per output neuron (×513), so the method loses.
+- **The noise is one scalar.** cos(v*, μ) 0.99, cos(top axis, μ) 0.99, so their mutual cosine is arithmetic. Mechanism: a^L ≥ 0 and degree-one homogeneity make the dominant fluctuation the overall loudness.
+- **Output fed back as input.** As a sample this is illegal; as a dynamical system it is legal and free. The attractor is real (8 starts converge in 3 iterations, cos 0.993/0.988, control 63× worse), but useless as a replacement. A quoted "600× gap" was a unit error of 100×.
+- **Effective rank collapse.** Participation ratio 165 → 20 → 6 → 2.0…3.4 with depth, top 8 directions hold 85…90% on layer 31. The conclusion drawn from it at the time was a tautology (an empty loop returned relu(h)).
+- **Router and pattern layers.** Geometrically confirmed (key 11…21× above noise on fresh samples), economically zero (silent neurons are 0.01% of the answer).
+- **Gate criticality is loudness.** The U-shaped deciles came from a globally computed s, so "number of critical gates" was inverse loudness in disguise (corr −0.58/−0.65).
+- **Deep collective statistic.** 79%/73% of the gain is one number, the squared norm of activations; 8 norms give 96% of it, all 72 polynomial features add 3…4%.
+- **Neighbour transforms.** No guessed orthogonal transform gives negative correlation (all ρ > 0, minimum +0.058); gradient search finds ρ = −0.15 but costs about 1e6 forward passes against a budget of 6485. The common mode ρ ≈ +0.06 is the radial component, now a theorem.
+- **Half-splice ANOVA.** Splicing halves of different samples is legal (independent coordinates), but loses ×25: main effects see only √N halves. It saves randomness, which is free, not forward passes.
+- **No one-dimensional shadow.** The active subspace of the even part is anisotropic (top 32 hold 46.7% of the trace against 12.5% uniform), but the one-dimensional content along active directions is small; stratification along one axis cannot remove the fourth-order part.
+- **Synthetic deep start.** Starting from a Gaussian sample at layer ℓ saves cost linearly (32× from layer 31); the bias of the Gaussian start falls with depth (2.2e-5 at layers 4…8 to 1.07e-6 at layer 31). The recorded blocker "you need 20 000 samples to fit K" was wrong.
+- **R² is not the binding quantity.** R² of anchor features rises 0.228 → 0.512 while the gain stays 0.10% → 0.25%: the optimal shrinkage is 0.003…0.005, so the correction is discarded at 99.6%.
+- **Geometry versus frame.** Rotating W → OW keeps the geometry exactly; the effect of the frame grows as one exponential ρ = 0.9202 ± 0.0042 per layer (R² 0.9971), a characteristic length of 12 layers.
+- **The residual-time tax.** Grader residual = wall − backend − overhead, so flopscope's own overhead is not charged, only plain Python between calls. Our earlier per-call cost was overestimated about 4× (62 µs by the clock against about 15 µs billed).
+- **Universal kurtosis.** The law γ₂ = 10/d holds (γ₂·d = 9.27…10.04 on 3 widths × 2 networks) and a universal constant is as good as the per-component oracle, but κ4 is worth only 1.3…1.4×, while 7.5× comes from κ3, which cannot be universal.
+- **Label noise is not the floor.** The offline corrector is limited by its own R², not by truth noise; the oracle ceiling of 1.32e-7 is honest.
+- **Rank-sketched forward pass.** Closed by number: participation ratio is not the dimension that matters for the mean; the tail is a per-variance quantity.
+- **Radial stratification.** Zero effect (|effect| < 1.4%); whitening already fixes the radius 7.5×.
+- **Same-sample tautology.** Any estimator that is a function of the same samples cannot reduce variance; this one statement explains four independent negatives.
+- **Structure lives two orders above the target.** Every structure found sits at 1e-2…1e-4, the target is 1e-6; the gap of 2…4 orders is the same in four independent measurements.
+- **v2 is exact through the third moment.** Antithetics make all odd sample moments exact in every direction; all of v2's error is in the fourth moment, which has about 33 000 components.
+- **Identities and correlation at opposite ends.** At the input exact identities exist but correlate 0.00 with the error; on layers 24…30 correlation is 0.89 but the truth is unknown.
+- **Error is born uniformly across depth.** Quarters of depth contribute 35/24/20/17%, the top single layer 9.4%; "fix one place" is dead quantitatively.
+- **Anchored control variate.** The gain is confirmed (an exact E[a_28] gives 28.4×); blockers are the accuracy of the anchor and the need to compute β rather than store it.
+- **Edgeworth per step.** κ3 plus κ4 give 5.3× per step; closure error behaves like diffusion √h; kernel-plus-bath mixtures and input stratification are dead; the right metric of anchor error is eᵀΣ⁻¹e.
+- **The anchor consumes only the variance diagonal.** Derived: the anchor uses diag(WᵀCW), 256 numbers per layer, not 65 536. The mixed κ3 "leg" was derived from one-index terms of the cumulant expansion and costs the same matmul.
+- **Corrections are coupled.** Separately 1.25× and 0.83×, together 20×, ceiling 12.8×. The blocker is ΔK; a derived low-rank covariance correction explained 0.2%.
+- **Closure tweaking closed.** It needs δσ/σ < 0.3%, we had 13%. Every step is exact, all error comes from accumulation; per-layer scalar calibration hurts even as an oracle.
+- **Multilayer control variate.** A predicted 3.6× was refuted (0.08× in reality): the anchor error lives in the same modes as the signal.
+- **Marginal solved, pairwise is the wall.** κ3, κ4 marginals give 20× per step (oracle 0.08% against noise 0.13%), but accumulated only 1.21×: the anchor error lives in the pairwise covariance. This closes the maxent/Edgeworth/marginal class.
+- **Learned anchor correction.** A learned correction removes 34.7% of anchor error on new networks (against 1.6% for every analytic attempt), using recursion over depth, equivariance over neurons and exchange only through W.
+- **v2 error is MC noise, not bias.** 96.3% is draw noise (correlation between seeds 0.037), so the ceiling of corrections from aggregated features is 0.99×.
+- **The instrument was the bottleneck.** On 160 networks a "gain" of 0.9837 appeared; on 2454 networks it was 0.9999. With truth for 2454 networks the instrument is 3.9× more precise; the real gain of the search was 0.9926.
+- **Transported closure residual.** The closure residual of intermediate layers, transported to the coordinates of the last one, gives R² 0.0322 against 0.0050 for 16 final-layer features (6.5×); search on it reaches 0.9712 against 0.9926.
+- **Weights-only features.** The ceiling of R² for any feature computed from weights alone is 0.0097, and 75% of it was already taken.
+- **Circle probe.** A sine probe along a circle shows the ReLU kinks perfectly (80% of energy in high harmonics) but adds zero R².
+- **Whitening carries to depth, antithetics die.** Whitening carries 1.36× to layer 31, antithetics vanish by layer 7; 6 networks had shown the reverse order.
+- **Search never beats least squares.** Evolutionary search twice converged to ordinary least squares and did not pass it (0.9702 vs 0.9680; R² 0.107 vs 0.114): the language had one output with one β.
+- **Covariance transport error is rank two.** Rank two removes 75…91%, a scalar only 1…6%. Direction 1 is shared across networks and aligned with the leading mode of C (|cos| 0.72…0.76); direction 2 is per-network noise. There is no projector from μ to σ (R² 0.01).
+- **μ and σ errors cancel.** Exact σ with recursive μ gives 1.234% against 0.979% uncorrected, which explains every earlier negative on closure tweaks.
+- **Split whitening.** A promised 1.057× on 160 networks was a mirage: 0.981× on 600 networks with K=4, 1.011× with K=2.
+- **Scalar μ correction.** A scalar correction of μ from our own sample improves the recursion 0.924% → 0.565% (1.63×); the same for σ gives 2.65%. Linear mixing of recursion and sample does not beat the bar.
+- **Recursion as a search input.** The difference between recursion and sample is the best single feature of 24 (R² 0.0086 on held-out networks).
+- **Exact sums survive, approximations die.** Features with exact reference values survived on 600 networks, features built on the Gaussian closure fell fourfold.
+- **Online calibration.** The signal is real (r = +0.91 between divergence from the sample on layers 1…30 and error on layer 31), but the two-parameter ceiling is 1.11× and we took 1.04×.
+- **A micro-network learns the closure error.** A 4→32→32→1 network (1200 parameters) removes 82% of the Gaussian closure error on unseen networks: pair non-Gaussianity is systematic and predictable from (t_i, t_j, ρ, depth) plus κ3, κ4.
+- **Learned Mehler form.** Rewriting the pair correction as Σ_k ρ^k Σ_m d[k,m] u_m(t_i) u_m(t_j) keeps the quality (R² 0.795 vs 0.794) at 0.024% of budget instead of 3.9%: the network is called per neuron, not per pair.
+- **Marginal chain without covariance.** A chain over the mean only, with σ and κ3, κ4 as inputs, gives 0.071% with exact moments and 0.440% honestly, better than the full recursion with C (0.505%) at 1/20 of the cost. The task reduces to the accuracy of σ.
+- **Hermite spectrum of the output.** Whitening plus antithetics already give 2.46×; 47% of what remains sits in very high degrees, so the whole family "kill one more moment" (cubature, QMC, stratification, moment control variates) is capped at 2.1×, while 28× is needed.
+- **Layer-0 control variate with coefficient one.** 1.047× for free, multiplying with pruning (1.443×) to 1.511×.
+- **The grader charges wall time, not only flops.** A zero-flop control variate raised the multiplier 0.1013 → 0.1247 (23% of budget) because it created two N×256 arrays on each of 32 layers; subsampling to 1024 restored 0.1008 at the same MSE.
+- **Minimax, DRO and CVaR weights** lose to least squares at both aggregation levels (0.87…0.98×): there is no between-network heterogeneity (99.9% of the signal is shared).
+- **Control-variate β = 1 is optimal** on 600 networks (flat curve 0.8…1.2); the ceiling is the correlation ρ = 0.19, not the scale. The bias of the dead-neuron mask measured directly: 1.56% of MSE.
+- **Bank arena.** 800 networks in 40 minutes without GPU; the control variate confirmed at 1.0396× (CI 1.031…1.048). The floor of the multiplier at 10% is optimal.
+- **Learned recursion beats the engine.** The analytic engine with a learned correction at every step gives 3.15× over the bank engine (5.52e-5 → 2.72e-5) at 0.4% of budget.
+- **Final error is sample curvature.** Established from three sides: the final error is held by the accumulated curvature of the sample, not by aggregation or by the closure, so every "estimate more cleverly" branch is dead by construction.
+
+### Late July 2026: cost mechanics, error anatomy, ceilings of the closure
+
+- **Residual time is the invisible axis.** Arenas measured util = F/B, while the score uses C = F + 1e11·R; the residual budget is 10 ms per network. Pruning costs +10.6 ms (enough to leave the 0.1 floor alone), a control variate with the full gate +8.1 ms, with subsampling only +1.6 ms.
+- **Residual is a fixed cost per call.** The same loop with the same flops costs 0.78 ms as one call and 15.4 ms in chunks of 128.
+- **The sampling error is not isotropic.** 36% of the MSE lies in one direction (along μ), a concentration of 91×. Steering the sample with the exact activation covariance has a ceiling of 3.60×, but the analytic target is 20× worse than the empirical one, so there is no source for it.
+- **The grader rejects numpy and os imports** (IMPORT_FAILED before the first network), and local validation does not catch it; checks must be made by AST on the packaged file.
+- **Error is 98% variance.** Bias is only 7.4% of the MSE at the working point; pruning does not add to it. The tail of heavy networks is pure variance and tracks ‖a_true‖ (r = +0.73), so moving budget to heavy networks gives exactly zero.
+- **The sample construction axis is fully mapped.** First, second and third orders are forced exact (this is the 2.79×), the fourth order explains R² 0.00, there are no concentration directions, a learned partner transfers 5%.
+- **Exact sums exist only at layer zero.** Antithetics and whitening together make the second sum of layer 0 exact to 1.4e-15 (neither alone does); the first sum is closed by a control variate; on layer 1 exactness disappears.
+- **Models on the raw final sample are capped at 1.04×.** The final scalar is nearly symmetric (γ₁ = 0.44) and shape sees location only through skewness; antithetics symmetrise and halve that ceiling again.
+- **A precise label is not a method.** Truth at 1e-9 costs 5 million pairs (1600 budgets). A micro-model trained on 230k neurons with that label learned nothing beyond a constant.
+- **A deep biased anchor beats an exact shallow one.** Moving the control variate from layer 0 to layer 12 gives 1.085× instead of 1.004×: correlation grows faster than the bias penalty. Shrinkage λ* is mandatory.
+- **No cheap formula for σ.** The off-diagonal of the covariance costs exactly 3× at every depth and cannot be calibrated away; marginals do not contain the needed information.
+- **κ3 of activations is low-rank at depth.** Participation ratio 3.1 at layer 31, 5.1 at 24, 11.5 at 16, so transporting it in the deep half costs about 1.8% of budget instead of 114%.
+- **A correction derived from the sample cannot beat the sample.** The sample estimate is unbiased, the closure is biased; correcting the closure with sample quantities is capped by the sample itself. The closure is valuable only as an independent anchor.
+- **Joint κ3 of a pair explains the step error.** Joint κ3 explains the closure step error at R² 0.9721 (6.0×) against 0.644 (1.68×) for marginals, with 8.9× needed. Exact κ3 cannot be delivered within budget (three routes closed); a free prediction gives 2.10×.
+- **Mehler series makes the closure cheap.** Pair moments of ReLU without quadrature: K=2 with an exact diagonal equals quadrature. This made a deep anchor possible inside the budget (+17% MSE at 3.4% of cost).
+- **The error is made by ReLU switching.** Gradient ascent to the worst-case network shows it from both sides: remove switching and the error falls 8 orders (3.6e-6 → 2.6e-14). A switching detector on real networks reaches R² 0.396 in cross-fit.
+- **The error lives in about six directions out of 256** (two independent measures: 8.1 and 5.7). This explains the MSE spread between seeds and the failure of low-rank and shrinkage schemes.
+- **The error is born from the variance error.** The derivative gate is innocent (three versions agree to 4 digits). The correct first order is Φ(t)·δm + φ(t)·δs; the second term alone, as an oracle, gives 2.76×.
+- **Remove the error at the output.** The ceiling of removing it at the output is 142×, against 2.6× for carrying a correction through 31 layers; the v-chain removes only 3.6% of the error.
+- **Shrinkage weights are derived, not fitted.** β = 1/(1+r²) matches cross-fitted weights to 0.6% on the grader.
+- **Pruning dead neurons biases the estimate.** About 3% of our MSE, invisible to every stand that computed the truth of the pruned network. A margin on the liveness threshold nets 0.3%.
+- **Closure error and sample noise share directions** (top ratio 5.35 vs isotropic 4.98), so anisotropic shrinkage gives zero; but the six directions can be predicted from the weights (PR 5.0 vs 6.5).
+- **Error is born shallow but delivered uniformly.** Birth falls 75× with depth, but the network damps shallow errors about 90×; every layer contributes 2…4%. There is no dead zone.
+- **κ3 line closed by an oracle ceiling.** True κ3 and κ4 on all layers make the closure only 1.42× more accurate; delivering them by a profile takes 5% of that. Asymmetry grows smoothly, there is no break at depth.
+- **Tropical geometry.** The cut does collapse with depth (252 → 58 switching neurons, cells 2^214 → 2^46, largest cell 7.4% of mass), but the six error directions sit on frozen neurons (0.295) rather than switching ones (0.052, random 0.131).
+- **The collapse is Lyapunov.** The participation ratio of the transport operator is 2.0 with a gap σ₁/σ₂ = 2.72; 68% of the final MSE is covered by a 6-dimensional subspace computed from weights alone.
+- **Per-network rank two.** The non-Gaussian residual is nearly rank two (rank two takes 0.917), but each network has its own, computable from its own weights (overlap 0.940); a shared basis was the wrong question.
+- **Within-layer errors are structured.** Neuron errors in a layer lie in 19…34 directions out of 256 with signs split evenly. Closure R² across seeds is 0.70 even at layer 24, blocked only by a constant offset; removing the offset end to end gives nothing.
+- **Fixing one piece of the closure hurts.** Removing 75% of the covariance residual made the final result worse even with an oracle; the Gaussian closure is self-consistent and its errors cancel. Fourth confirmation.
+- **A second cheap sample on layers 1…ℓ** gives MSE −2.4% for +40% cost: the v-chain already removes about 90% of that variance.
+- **The fitted λ sits at the optimum on the grader** (×0.85 costs 2%, ×1.15 costs 7%, 100 networks). Cutting K without refitting λ is not allowed (K=6 worse than K=4).
+- **Second-order transport** accumulates coherently (Σ/Σ|·| = 1.000) but is 0.001 of the linear term and falls with depth: 1.001×. Closes higher-order transport.
+- **Anchor depth sweep.** An oracle anchor at layer 24 gives 11×, at 30 76×, but the closure reaches only λ* = 0.08 there, i.e. 1.10× in reality. The best added anchor is layer 2 (+12%); the stack [0, 8, 16, 24] is worse than it: anchors compete.
+- **Hermite degree spectrum bounds the exact family.** The spectrum is monotone, degrees ≤ 3 hold 0.71 ± 0.05, so exactness to the third degree caps at 3.4× ± 0.6 (where we are) and the class at about 7…9×. An apparent non-monotonicity was a procedure artefact.
+- **The untakeable tail is the ReLU kinks.** softplus with β = 4 collapses the degree ≥ 7 tail from 0.19 to 0.02…0.06 on all networks: the 7…9× cap is a smoothness ceiling; every smooth approximation is dead regardless of price.
+- **σ branch ceiling.** An oracle s on all 31 layers gives only 2.83× while the target of the leader is 6.8×; polishing σ cannot reach it.
+- **Tail quadrature needs 64 dimensions.** Low dimensionality is real (principal directions 6…25× better than random), but projection bias drops below our error only at k ≥ 64. R² 0.993 described the variance, we estimate the mean.
+- **Better one-dimensional basis.** An additive ridge model takes 0.47 of the variance, a 1.89× ceiling against our 3.4×; it equals the polynomial (1.93×), so the bottleneck is additivity, not the basis. On the Gaussian line there are about 1400…1950 kinks.
+- **Stein control variates** give ρ² = 0.002 against 0.5 needed; their useful members coincide with what v2 already removes.
+- **Gaussian tilt of the sample.** A 1.104× seen on an isolated stand was a mirage: on top of whitening (1.482×) the tilt gives 0.842× unbiased and 1.003× self-normalised.
+- **Optimal quantisation** (Lloyd, 9268 centroids in 256 dimensions) is only 3.5% better than one point at zero; the estimator with oracle weights is 330× worse than MC. Positive control in d = 4 wins 2.1×.
+- **Smoothness homotopy.** Smoothing collapses the closure bias 31× by the law (1+c²)^(−3/2), but at the same c the paired difference carries 72…92% of the function's variance: the homotopy degenerates into MC. The conditions on c do not intersect.
+- **Perfect closure on all 31 layers gives 2.41×** (median), not 1.25× as measured on layers 1…8. The curve is steep only near zero (twice as accurate = 1.15×). κ3 has no far field, so hierarchical delivery is closed.
+- **93.5% of our MSE is variance**, 6.5% bias, and the bias does not shrink with sample size; jackknife or Richardson over the sample is capped at 1.065×.
+- **We are above the BBP threshold** (θ = 132.6 against √γ = 2.8…11.3), so the error direction is recoverable from one budget (overlap 0.90). The dozen dead "direction from the sample" branches died on the coefficient, not the direction.
+- **The interaction-order axis does not help.** The univariate part of the function is linear (U(ρ) = 0.245ρ), so 256 one-dimensional quadratures buy nothing beyond antithetics. Strict LP bounds: degree ≤ 3 → 2.67×, order ≤ 2 → 2.42×.
+- **Natural transport beats any fitted direction.** Transport through the gates beats any fitted projection 2.5× (5.83× vs 2.36× at layer 30). A profile ρ²(ℓ) = 0.981 had been an oracle quantity; the real ρ²(30) is 0.829 with an oracle mean and 0.116 with the closure.
+- **Multilevel MC on a cheaper network.** Rank and width surrogates decorrelate (ρ² 0.03…0.23, Marchenko-Pastur); depth survives but weakly (Giles telescope 0.96× fixed vs our 3.4×).
+- **Variance lives between cells, not inside.** Conditioning on the full activation pattern removes 0.05% of the variance; Rao-Blackwell ceiling 1.0005× (monotone control over 4 orders).
+- **The budget is per network** (from the whestbench code), so Neyman allocation across networks is impossible. Path sampling would need 10^65.6 samples against 10^4.
+- **Fixed overhead.** F_fixed = 0.00261·B, so the floor is not a strict optimum, but the ceiling is 1.027×; residual time scales (2.41× at util 2.12×).
+- **The heavy tail of the score is between networks** (the worst 25% carry 0.429 of the sum), so robust estimators inside a sample cannot reach it (median of means 0.40…0.45×, trimmed mean 0.20×).
+- **Bad networks are not predictable from weights** (cross-fit R² of log MSE −0.812, control −0.971); an oracle choice of λ per network gives only 1.089×.
+- **"Known mean versus correlation" law withdrawn.** It rested on an aggregated r that 256-neuron aggregation inflates 3…80×; element-wise, pair statistics are as accessible as E[a²].
+- **A stale artefact had a different σ channel.** A saved file was written with debiasing on, while code and submission ran without it: σ channel 42…46% different, μ identical. This explained 0.785×/0.892× failures of refitted λ on real files.
+- **The stand target is biased along fitted directions** (|cos| 0.384 for μ against 0.047 for a random vector), so λ fitted on such a stand is systematically off.
+- **Per-neuron shrinkage shape.** An oracle shape gives 1.022× on 24 networks (1.174× on 4 was a small-sample mirage); a model shape gives 0.905×, since 94% of the spread lives within a layer.
+- **Exact per-neuron closure bias.** b_i = κ3(h_i)·m_i·φ(t_i)/(6s_i³), sealed to 1.24e-14. A recursion b̂_ℓ = Φ(t)(Wᵀb̂_{ℓ−1}) + source gives a signed correction.
+- **Per-element β is worth 1.8×.** β = 1/(1+r²) per element with oracle r gives 1.786× against 1.062× for one λ per layer; a mask r < 1 gives 1.863×; deep layers 24…30 give 1.497×. The only blocker is predicting r.
+- **Mid-network start is dead** (bias at k=2 gives 6.5e-6, 213× worse, for 1.03× savings), while λ is a function of n: λ(un)/λ(n) = (1+r²)/(1+u·r²); the score model reproduces the grader.
+- **Sample-size sweep on the grader.** Below n₀ MSE is exactly 1/n; above it 2n gives 0.618× instead of 0.500× (fixed λ over-correct). Refit 0.902× and depth 0.926× both hurt; the strength is in the shape (1.533× oracle).
+- **Smoothing b̂ over depth is impossible.** Sample error is transported by the same operator as the bias (corr +0.943 between transported noise at ℓ and noise at ℓ+1); 30 layers are one observation transported 30 times.
+- **Two-moment closure ceiling 2.72×** (third independent measure of that bound). A series over switching neurons diverges by 300× (888…1064 neurons outside the modal mask). The Koopman residual is full-rank.
+- **Mehler self-residual predicts the per-neuron bias.** The residual of the Mehler series on the diagonal correlates −0.413 with |b| (−0.434 controlling for s, |t|, φ; null −0.002), twice as strong as Edgeworth (+0.246).
+- **A moment estimator at the last step is the same estimator.** Edgeworth from sample (m̂, ŝ, κ̂3, κ̂4) gives 0.996× against plain mean(relu), their errors correlate +0.9964, combination 1.000×.
+- **Perfect closure ceiling against the submission: 12.1/13.5/11.2×.** Perfect m alone gives 10.5…12.7×, perfect s only 2.26×; the gain builds smoothly with depth.
+- **Bias lives on rarely switching neurons.** 24% of neurons that open in fewer than 0.2% of samples carry 76% of the weighted bias; perfect knowledge of b on them gives 1.599× against 1.159× on a random 24%. Perfect b everywhere gives 7.24×.
+- **Two states of a neuron.** "Whether it passes" is 3.4% of the variance (ceiling 1.031×, measured 1.028×), "how much it passes" 96.6% (oracle 5.38×); splitting E[relu] = P·E[p|+] with separate shrinkage reduces to shrinkage of the product.
+- **Pre-activations have heavy tails** (max/s 6.04 vs 4.76; 4.41× more events below the 0.001 quantile; corr(b, left-tail weight) = −0.426), but the shape is per neuron (quantile spread 0.138), not shared by a layer.
+- **The closure error recursion is closed exactly.** b_ℓ = Φ(t)·(b_{ℓ−1}@W) + φ(t)·δs + e_loc with non-closure 5e-5 and a linearity seal of 0.00000. Shares: transport 93.9%, δs 1.4%, local formula error 2.3%; extending the formula to κ4 would buy 2%.
+- **A free t feature** predicts b_i/s_i with R² 0.50 per network-layer cell but gives only 1.056× in the score (gate 1.20×): ladder estimates are optimistic.
+- **Steering inputs by backpropagation** from an output cluster ruins the mean: 0 steps give 0.995 (unbiased), 10/30 steps 3.9/5.2× worse.
+- **Fit residuals are correlated across layers**, so they add coherently: a real residual at R² 0.948 gives 0.96×, random noise of the same norm would not. This closes "predict b from features".
+- **Spherical sampling is dead** (whitening fixes Σ‖x‖²/N = n exactly and suppresses radial noise 35.5× by std; radial share 1.6e-6). Whitening layer-1 activations to exact moments costs exactly what it gains.
+- **Rao-Blackwell does not commute with composition.** Replacing activations by conditional expectations keeps the mean but always reduces the variance, and the next layer depends on the variance, so the whole class fails by construction.
+- **The perfect-closure ceiling is at least 23.8×,** not 12×: the old number was lowered by noise of its own truth (a cross target raised it to 16.9×) and omitted the last layer.
+- **"Hot" sampling directions are isotropic** (λ_max only 1.392× random, pairwise cosines 0.0629 vs theoretical 0.0625), which closes targeted sampling in 256 dimensions.
+- **Deep anchors die on closure error.** Gain = 1 + E[e²]/B², and the ratio falls from 2.05 (layer 1) to 0.043 (layer 30).
+- **Free second-moment channel.** â² − E[relu²] of the closure gives about 1.04× on top of the submission at zero extra flops, stable on two disjoint groups (1.037/1.051); a 16-parameter combination with p⁴ overfits.
+- **Residual is measurable locally** (BudgetContext.residual_wall_time_s) and is pure Python time: F/B 0.1018 + λR/B 0.0067…0.0092 = 0.1085 against the grader's 0.1073.
+- **Residual phase map.** The two largest phases (47.5% of residual) contain zero flopscope operations: freeing locals 3.32 ms and weight pruning 2.52 ms; out= in relu adds 4.5 ms, ix_ adds 1.8 ms.
+- **"Local closure step error 0.15…0.22%" was truth noise.** On layer 0, where p is exactly Gaussian, the discrepancy is still 0.2146%; the price of K=3 at the step is 1.00×.
+- **Importance sampling gives exactly zero.** Self-normalised IS is 0.980…1.000× even with ideal weights; all of the gain exists only with knowledge of E[g], i.e. the answer.
+- **Edgeworth correction per step.** Third and fourth moments give 5…11× in closure accuracy (22× needed). Sealed: E[relu(p)] = mΦ + sφ − (γ₁/6)·s·t·φ + (γ₂/24)·s·(t²−1)·φ. At t ≈ 0 the fourth moment works, at t ≈ 1…2 the third.
+- **Residual jumps at allocator thresholds** (16 and 32 MB, mmap mode of malloc), which kills a promised "budget ×4".
+- **Antithetics halve two matmuls.** Covariance and layer 0 on a half-size matrix: 4.2% of flops for free, MSE unchanged.
+- **Mixed κ3 in the low-rank activation subspace.** A k³ tensor of rank 16 holds 83% of oracle information, improving with depth.
+- **Variational width** cuts closure error 1.68× but gives about 1.02× in score, because the closure enters only through channels with tiny λ.
+- **Local closure formula ceiling 1.111×.** Two thirds of the m error are created by transport, not by the step.
+- **Free local correction.** The local step error is predictable from features already in the recursion (R² 0.544, 1.077× by the ladder).
+- **The hard pruning criterion max(h) ≥ 0 on the pilot drops 44% of live neurons** (+7.4% MSE); a soft threshold −0.15·std gives about 1.06% for free.
+- **Prize and anchor at opposite ends of depth.** The gain grows with depth (K=30 gives 44.8×, 139× over MC) while the exact anchor exists only at layer 1. A first measurement (11.39×) had been contaminated by truth noise.
+- **Scale noise is predictable only within a network** (cos with m 0.978, R² 0.915 out of sample across seeds, but LOO across networks 0.999×).
+- **The Mehler K=2 closure is a balance point.** Substituting the true variance makes it 3.4× worse.
+
+### End of July to early August 2026: bias versus variance, channels, recursion of cumulants
+
+- **Bias is 8% of the MSE, not 46%.** A direct measurement with a calibrated null gives 7.6%; the ceiling of zero bias is 1.08×, not 1.85×. Doubling n gave 1.766× (predicted 1.859× and 1.370× by the two hypotheses), which confirmed the stand. The gap to the top is variance. Of four λ families exactly one works.
+- **Closure bias outruns sample noise by layer 2**, and by layer 8 it is 2.37× larger; the signal there is 0.655 (the oracle), but without a free term only 0.036 remains. The ratio is universal across networks (relative spread 5…11%), so adaptive λ is dead.
+- **The running-mean path of the estimate carries no information.** R² for the sign −0.13 (rolling control −0.10); envelope 0.73×, median 0.75×, trimmed mean 0.009× (the answer lives in the tail).
+- **Pricing a channel before running it.** The depth map gives a ceiling for any channel from the layer where its information is exact: v (layer 1) ≤ 1.08× gave 1.03×, a new variance channel (layer 1) gave 1.00×, the Q family (exact on 1…8) ≤ 1.72× gave 1.20×.
+- **Only the mask family stays clean at depth.** The ratio ‖closure bias‖/‖noise‖ crosses 1 at layer 3 for S and A, 5 for Q, and only at 22 for G (the mask), because Φ(t) depends on t = m/s where the errors of m and C cancel.
+- **Activation rank collapses** from 161.6 to 2.5 with depth, but rank truncation never pays: the needed saving is always larger than the available one.
+- **Remove beats predict, across 30 verdicts.** Methods that remove the error where it lives: median 1.043×, 38% above 1.05×. Methods that predict its propagation: 18 of 18 gave zero (median exactly 1.000×).
+- **Where the top sits on our depth map.** A score of 8e-9 means 24.4× better than us, which corresponds to an exact anchor at layer ≈ 29 (ρ² ≈ 0.964 against a class ceiling of 0.963); the learned-bias branch (oracle 7.185×) corresponds to K ≈ 24, 3.4× short.
+- **Element-wise λ profile by neuron rarity** gives 1.0099× against a shuffled control of 1.0066×: zero. Beyond layer 8 the closure is not computed, so such features have no reference.
+- **Pilot samples were thrown away.** The submission ran 256 antithetic samples through the full network as a pilot and discarded them; reusing them gives 1.0080× LOO across networks (arithmetic promised 1.020×, but pruning is decided by the same pilot).
+- **Compensating pruned neurons with their mean** is worse even with oracle means (0.9755×), because λ was fitted on the pruned network and already absorbed that bias. On layer 0 no neuron is dead: antithetics make h(−z) = −h(z).
+- **We were 3.5% above the cost floor** (multiplier 0.1034 at a floor of 0.1); beyond that, saved flops must go into the sample.
+- **Output second-moment channel** is real (1.0542× over its base, null 1.0016×), but extending the closure to layer 31 costs the same (0.9519×): net 1.0035×.
+- **Gate from all ~9000 rows** instead of the first 1024: 1.0059× (paired, 24 × 16) for about 0.03% of flops. A 3 × 4 smoke test had shown 1.0247×.
+- **A surrogate head** (micro-model z → x₂₈ plus the true tail 29…32): cross-validated R² only 0.17…0.21; the raw version has bias 160…276× our whole MSE, the honest two-level one gives 0.55…0.64×. The MLP is again worse than a linear model.
+- **Sample correlations at layer 29** (masks, shape, link to the output) do not know the sign of the output error: ceiling corr 0.16, LOO 0.82×, oracle 0.95×.
+- **λ absorbs any mechanism you fix.** Exact per-sample transport (the Onsager reaction term) gives 0.9977×, worse than naive mean field, with bias up 5%: 32 λ values had been fitted on top of the defect. Any change to the mechanics must be measured with refitted λ.
+- **Quasi-random points** (scrambled Sobol) lose to i.i.d.: 0.64× at 4331 points, 0.84× at 4096. In 256 dimensions with n ≈ 4k the uniformity of joint projections breaks down and 32 ReLU layers make the integrand too rough.
+- **Accuracy at depth is a cliff.** Depth is worth nothing without accuracy: break-even ε ≈ 0.15%; 24.4× would need ε = 0.02% at K ≈ 30. Our 0.9% gives 0.03×, a harmful anchor. Five times the accuracy buys ten times the gain.
+- **Two estimators on one draw.** Their observable difference Δ is orthogonal to their error (R² 0.009); the oracle blend is 1.0167×, below the noise floor. The stand reproduced the grader ratio to 1.4%.
+- **Truth noise inflated every MSE we measured.** The bank truth has its own noise of 4.64e-7 in MSE, 24% of the working MSE, and the metadata understated it 7.7×. All stand MSEs were inflated and ratios compressed toward 1, so gains were understated by about 19%.
+- **Half-split self-assessment.** Splitting the sample in half estimates its own MSE without truth at zero flops (8% accuracy), but within a network R² across draws is 0.0008 (across networks 0.855): it knows the level, not the deviation.
+- **The function is worse than uniformly high-dimensional.** Knowing k coordinates of z explains only 0.3·(k/256) of the variance: 8 coordinates 1.0%, half of them 20%. Variance lives in high-order interactions; block and low-dimensional methods are dead as a class.
+- **The answer is born early, the error is made late.** Exact identity m₃₂ = Σ_ℓ transport(c_ℓ), c_ℓ = Cov(p, gate), sealed at 5.35e-9. Layers 0…7 carry 50% of the answer, while the error is made by the last layers. Gates are exactly 0.500 everywhere. Expansion around the bare linear network is dead (He init puts the expansion point 10^5 too far).
+- **Error is additive across all 32 layers.** Knowing one half (gates or c) is 2…2.7× harmful; an exact head for ℓ < 30 gives 24.43×, matching the (K, ε) map to 0.7%.
+- **Edgeworth cumulants are the live branch.** The field is not Gaussian (γ₃ grows 0 → 0.5 with depth); an Edgeworth series in κ3, κ4, κ5 has a ceiling of 47.6× (0.0256%), and all three cumulants are measurable from the working sample (S/N 9.3/3.4/1.1).
+- **Closure bias is a nearly universal function of 8 dimensionless neuron features.** What matters for the score is ‖Mᵀb‖², not Σv²b²: the constant component of b adds coherently and gives 73% of the contribution (92% on layers 1…8).
+- **Our control variate used only 11% of the class.** The whole submission control variate removes 1.125× of MSE, ρ² = 0.111, while the class ceiling (ideal m, s) is ρ² = 0.926. The layer-1 channel alone gives 9.8% of the 11.1%.
+- **Audit of two reference numbers.** R² = 0.70 did not exist in any log (it was a hard-coded reference line); the only measurement gives held-in 0.3596. Comparisons built on it were withdrawn.
+- **The partition is not fractal** (box dimension 0.996 = control); depth adds kinks rather than multiplying them (32 × 256 ≡ one layer of 8192). 99.99983% of the error lives between cones, not inside them.
+- **The maximum of the network on the sphere** is only 8.8× the mean but 47σ away, so its neighbourhood has negligible measure. At the maximum the gates are 0.5065 against 0.5023 typically: the maximum is structurally ordinary.
+- **"Adjoint effective rank ≈ 8" did not reproduce** (12 networks, 4 theoretical seals): measured 89 in layer space and 95 in output space; the gain of the constant direction is 0.87…1.07, exactly neutral.
+- **Linear filter / shrinkage in a fixed basis, closed.** Oracle 1.1985× (100% of networks), attainable 0.9937× (46% of networks, a coin). The gap isolates the culprit: oracle signal with our noise estimate 1.2064×, our signal with oracle noise much worse. The signal estimate is the bottleneck.
+- **Closure error is covariance, not shape.** Clean measurement: diagonal-only 3.957%, full 0.952%, submission 0.932%; switching to a full C buys 0.978×. A deep anchor fails because closure bias 0.932% exceeds sample noise 0.27%.
+- **Correcting C alone makes the recursion worse.** A consistent two-parameter correction (α inflates the off-diagonal, β scales the φ term) has its joint optimum on a 15 × 13 grid over 24 networks exactly at (0, 0): the submitted closure is already stationary. Oracle on itself 1.12×.
+- **The MC miss lives in three directions.** Effective directions 2.9 of 256 (isotropic control 50.6), 40.9% of energy along the truth itself (scale), concentration 105×; second instrument after 35.6% earlier. The analytic side knows the scale three times worse than the draw.
+- **The attractor is a typical sample.** As a reference for intermediate means it beats the closure on 0 of 31 layers, losing 28…423×, and is no better than one random sample on layers 1…16.
+- **Attractor algebra.** It is a left eigenvector; the level spacing ratio ⟨r⟩ = 0.529…0.536 is flat with depth at the GOE value 0.5359, so level statistics find no hidden structure.
+- **Analytic pruning by Φ(m/s) is impossible.** At equal pruning share the pilot loses 0.0100% of the mass, the formula 45.93% (4600× worse); even at threshold 1e-12 the formula loses 4.9%. The Gaussian tail of the closure is worthless exactly where pruning acts.
+- **Field shape is set by the weights.** The shape does not depend on the input distribution (cos of γ₃ ≥ 0.9956 between Gaussian, uniform, Bernoulli and χ²); skewness is 86.5% readable from t = m/s with universal coefficients, but a skew-aware closure is still 3.6× worse than the sample.
+- **A per-network shrinkage scale** is worth under 1.09× (oracle 1.089× and 1.094× on two stands); no measurable precursor reaches it. A correlation of −0.73 on 4 networks became +0.29 on 60.
+- **Width robustness.** The phase-1 estimator was robust in depth (8, 16, 32, 64 all above 1.7×) but appeared to collapse at width 1024 (25 000× worse than MC). This turned out to be an artefact of holding the budget fixed: the toolkit scales the budget with the shape, and with the right budget the collapse disappears.
+- **The pilot cut is a net benefit.** No pruning at all is worse by 30.25% MSE at ×1 and 12.10% at ×16; a larger pilot hurts too (512: −19.47%, 2048: −80.60%).
+- **Coefficients are curves, not constants.** Every coefficient of the estimator falls to zero as the budget grows: optimal λ 1.5 (×1) → 0.5 (×8), blend weight 0.045 → 0.005, cutoff layer 8 → lower.
+- **The advantage over MC melts with budget:** 4.24× (×1) → 1.47× (×8) → 1.09× (×64) with optimal coefficients. There is no bias floor: an apparent F ≈ 3e-7 came from frozen constants.
+- **Self-iteration has one fixed point.** Iterating the network into itself reaches a single attractor from 100% of 1024 starts; no cycles (0 of 12 networks), period 1 in 9 of 12, a blurred attractor (about 10°) in 3.
+- **The gate channel** would need q four times more accurate: a realistic reference gives ×1.0025, a half-oracle with true γ₁ ×1.0004, both below the control (×1.0165). Errors of shape and argument cancel.
+- **No nonlinearity left in the λ basis.** Bin regression (40 quantile bins, any one-dimensional function) gives the same as a straight line: largest excess 0.68% at an instrument floor of 0.38% (12 networks × 32 draws, 98 304 points).
+- **Deep channels die against the real submission.** Four δ-channel families on layers 8…31 give ×1.0104, while the control (same features from another draw) gives ×1.0147.
+- **The shrinkage weight is computable per network.** From δ = e + B, λ* = E[e²]/E[δ²], both terms already present (variance/N and Σδ²): zero cost. Correlation with the oracle optimum across networks grows with depth.
+- **The optimal blend weight varies ±57% across networks** (0.010…0.232, mean 0.095, one constant 0.0651); personalisation is worth ×1.0289, but no predictor reached it.
+- **A tuned blend weight.** File-level A/B on 48 networks: a candidate thought to be better was 0.9955× (worse); with the blend weight 0.0651 → 0.0883 it became 1.0041×.
+- **Blend-weight signal is real, draw noise eats it.** With a corrected denominator the feature correlates +0.71 across networks, but per draw its component correlates −0.830 with the optimum (scale knob −1.000): per-network personalisation of a global weight needs an unobservable quantity.
+- **Two closure errors separated.** Shape error (Gaussian formula at exact m, s of the layer) is a shelf of about 0.2% that does not grow with depth; chain error grows as A·√(ℓ−1) to 1.0%, so layer errors are uncorrelated.
+- **Edgeworth in the chain** helps m layer by layer (×1.88 at layer 2, ×1.51 at 8), crosses 1.0 at 24 and gives ×0.944 at the output: the local shape error does not grow, the inherited perturbation grows to 1.0e-2.
+- **Cleaning the Q feature with same-pass cumulants.** Local Edgeworth cleaning of δ_Q with sample γ₁, γ₂ from the same pass (2 multiplications and 2 reductions per layer, no matmuls) gives 1.0134× on 48 networks.
+- **Pruning bias is computable without samples** as the difference of two closures (full minus pruned weights): LOO ×1.0061, β* = 0.3651 stable, foreign network ×0.9999, noise ×1.0000; but too expensive for the gain.
+- **The Q channel is poisoned by closure bias.** δ = x̄ − closure = sample noise + closure bias, and the bias is pure harm: a debiased feature gives ×1.2255 instead of ×1.1233 (×1.0910 in score). 98.4% of the effect sits in the Q family (δE[a²]).
+- **Capacity law.** Overfitting penalty = 11.76%·k/N (k parameters, N networks with truth), coefficient stable 9.6…15.4% on two runs; at N = 48 only about 3.6 parameters pay off.
+- **Reference-beam scale estimate.** Using m_deep as a reference, ĉ = ⟨p, m_deep⟩/‖p‖² correlates −0.5975 with the optimal scale across networks (random −0.2319), but the file-level result was 0.8919×.
+- **Cost model v0.10.** After the toolkit moved to flopscope 0.10.0 / whestbench 0.14.0 our F rose only +0.16%.
+- **Grader budgets of submitted files** in one table (9.97%…10.75%); residual per fnp call measured from two points: 11.5 and 13.3 µs.
+- **Alignment of neighbouring layers** (‖W_iW_{i+1}‖²_F normalised) carries no scale information: correlations −0.025…+0.117, LOO 0.9936…0.9945, shuffled control the same.
+- **Sample-free cumulant recursion fails its seal.** κ3(h') = (W³)ᵀκ3(a), κ4(h') = (W⁴)ᵀκ4(a): κ3 correlation falls 0.806 (layer 1) → 0.125 (layer 31), κ4 becomes negative by layer 5, κ3 scale 0.66 → 0.0036. Ignoring dependence between neurons kills it.
+- **Closure error does not depend on layer order.** Forward 0.00980, reversed 0.01034, reversed-transposed 0.00986, shuffled 0.00993: spread between variants 0.5% against 24% between networks.
+- **Mehler truncation at K=2 costs 0.02%.** Terms A₃ = −tφ and A₄ = (t²−1)φ were derived and checked (the first three match the submission).
+- **Error conservation between a network and its conjugate.** err_forward + err_reversed-transposed has spread 12.42% against 24.4% for the terms (compression ×1.355); controls behave as independent.
+- **Residual bias measured directly.** Fit MSE(N) = V/N + b² over 6 sample sizes: V = 6.733e-3, b² = 5.054e-7 = 22.3% of MSE (variance 78.6%, bias 21.4% at the floor).
+- **An unbiased construction exists and loses ×1.35.** Layers 1…4 remove nothing, all the action is on layers 5…8 (+24.9%), where signal and bias are the same mechanism.
+- **Value is in the tail of depth, error is not.** Exact identity E[a_L] = Σ_ℓ 2^{−(L−ℓ+1)}(W_Lᵀ…W_{ℓ+1}ᵀ)E[|h_ℓ|], sealed at 7.233e-16. Factor per layer 1.4110 (theory √2 ⟹ 1.4142); the last 7 layers give 90.8% of the value, the first 19 only 0.34%.
+- **The (j,j,k) term carries 93% of κ3.** In κ3(h_i) = Σ W_jW_kW_l κ3(a_j, a_k, a_l) the leading term is (j,j,k), where W² enters squared and signs do not cancel (ΣW² = 2 deterministically).
+- **The exact formula is NNGP plus 1/n.** Literally, a sum of Gaussian moments over linear regions (about 10^700 terms); practically, the task is NNGP plus 1/n corrections, and the Mehler recursion is exact as n → ∞.
+- **Edgeworth overshoots twofold at depth.** The density shape p(t) − φ(t) on all 32 layers is a clean He₄ pattern (higher centre, lower shoulders at t ≈ ±1.7, heavier tails beyond |t| > 3) growing monotonically; at 5σ the density is 10× Gaussian.
+- **Grader two-point bias.** Two submissions with different N split MSE = V/N + b² on the real test set: V/N₁ = 1.645e-6 (82.3%), b² = 3.549e-7.
+- **Activity pattern as a control variate.** The per-sample count of open neurons n_act explains R² 0.2493 of output variance (×1.332 in variance, ×1.258 in score) against the raw MC estimate.
+- **More samples is exhausted.** About 59k samples (a full budget) give MSE 4.977e-7, a score 2.3× worse than at the floor; V/N falls but cost rises linearly.
+- **The phase-1 top spent wall time, not flops.** F = 1.30e7 (1709× fewer than ours) with R = 2647 ms (76× more), 97.32% of budget; 1.30e7 is 1.24× a diagonal-only closure.
+- **Per-neuron moments would suffice but cannot be obtained.** Four per-neuron moments cut the local E[ReLU] error 0.1898% → 0.0147% (×12.88), which would give closure MSE 1.02e-7.
+- **The per-neuron Edgeworth gain lives in a fragile cancellation.** κ3 with corr 0.9196 plus exact κ4 gives only ×1.217 of ×12.7: κ3 and κ4 cancel each other.
+- **The n_act channel was closed by the grader** (1.941e-7 against 1.873e-7, ×0.965): measured against raw MC, while the submission base already contained a correction that took 84% of it.
+- **An invariant of the shape.** ⟨γ₄⟩/RMS(γ₃) = 0.961 ± 0.037 on all layers 2…32 although both grow 12×; the rank-collapse explanation offered for it failed.
+- **Non-Gaussianity lives in the spectrum tail.** Derived exactly: κ3(h_i) = Σ_rst M_rst G_ir G_is G_it with G = WᵀB (multilinearity of cumulants); at full numerical rank the correlation is 1.00000000.
+- **Conditionally independent representation.** C_g = D + VVᵀ makes components independent given η, so κ_r(p_i|η) = Σ_j W_ji^r κ_r(a_j|η), a matvec instead of n³ or n⁴; it fixes shape but not scale.
+- **Sample moments in the closure recursion.** A first ×1.33 turned into ×0.26 once a wrong calibration constant (RMS(truth)² 0.1918 instead of 0.88404) was replaced by a direct measurement.
+- **Higher Mehler orders (K = 3…6) give exactly zero** at large t: σ scale 0.8725 → 0.8726, chain error 0.9431% → 0.9421%; a flipped-sign control is the same.
+- **σ from the weights is unreachable.** 107 520 points, 15 derived candidates against the residual log(σ_true/σ_closure) after removing the layer constant: none above noise.
+- **Two scalars per layer** (k_m, k_σ) are exactly what the global α already does: oracle layer constants give almost nothing on top.
+- **A reconstruction of the phase-1 top's method.** An m-recursion with σ adjustments; our ladder placed it between L5 and L10 once the calibration error was fixed.
+- **σ error is a geometric sum of off-diagonal step errors:** 0.35% per step ÷ (1 − 0.976 damping) = 14.6% against 14.8% observed.
+- **The closure error is a pair property.** All earlier scans were per neuron; a pair model learns it to R² 0.6…0.7.
+- **Corrections must be orthogonalised against α.** Any correction competing with the calibrated α for the scale degree of freedom loses to it; projecting the correction orthogonally to the scale fixes three failures.
+- **Learned F(t_j, t_k, ρ).** R² 0.695 (0.727 with depth buckets) confirmed, projection R² higher, but the channels cancel and tables only buy scale; a foreign-correction control took the same gain.
+- **The phase-1 top ran per-neuron cumulants, not matrices.** Skeletons run under BudgetContext pin its F to 1.6…3.4% as three reductions of length 256 per neuron per layer.
+- **MC variance branch closed, and b² is a blend artefact.** b² = 3.548e-7 is w²·E² at blend weight 0.0883; at w = 0 the real floor is 1.79e-8.
+- **Fitting both coefficients revives four dead branches.** Corrections had been measured with weight fixed at 1; jointly fitting m̂ = α·b + β·c⊥ (LOO across networks) changes four verdicts.
+- **Three of our verdicts were wrong.** A score-translation constant was derived for a different configuration; two other verdicts rested on it and were withdrawn.
+
+### August 2026 (end of Phase 1): the payback gate, the official truth, the class ceilings
+
+- **Non-Gaussianity lives in the copula, not the marginals.** Exact formula via Price's theorem: Cov(a_j, a_k) = s_j s_k ∫₀^ρ Φ₂(t_j, t_k; r) dr; our method is this series truncated, and the moment expansion of the copula is exhausted from both sides (eight sample-free measurements).
+- **Payback gate.** At the budget floor any extra work of cost c takes samples from MC, and MSE ≈ 0.912·V, so a deterministic addition must improve the closure by a factor that pays for its samples; this one gate explains why every deterministic branch died at once. κ21 is real but unaffordable.
+- **The λ channels buy 1.28×, not 3.7×.** Direct measurement (λ families set to 0, 48 networks, cross target): MSE 2.221e-6 vs 2.849e-6, ×1.283, t = +2.61. The recorded 3.7× had been obtained by division.
+- **Antithetics buy 1.59× through whitening**, not through correlation of f(z) and f(−z): they make the whitening more accurate.
+- **Negative weights create dimension and nonlinearity.** Without them the network is exactly linear (rank 2.4 instead of 125.8); neurons become deterministic because the spread falls (×0.302), not because the mean rises.
+- **Replacing the pilot by analytic pruning** from the closure gives ×1.0949 (the pilot costs 6.47% of a sample); a per-neuron λ(t_j) is dead (×1.0048 against a foreign control ×0.9985).
+- **Control variates are dead by an exactness/correlation dilemma.** R² 0.0598 against a fitting background of 0.0750: exact means exist only on layers 1…2, where there is no correlation with the output; at depth there is correlation but only approximate means. Our blend already is a control variate (×1.016).
+- **Low rank plus diagonal cannot represent C.** One step with the best possible compression of the true C into diagonal + rank k gives 28.3/16.7/13.7/11.6/10.1% error for k = 0…4, decaying as k^−0.36: 1% needs rank about 100 of 256.
+- **Budget is per network.** Reallocating samples between networks would give ×1.1115, but the grader multiplier and its 0.1 floor are per network, so u* = 0.1 is optimal for each network separately.
+- **The official dataset with exact truth.** 1000 networks with truth from 1e9 samples (noise 0.0023% against 24% in our bank) made the stand 30× faster and the paired SE 5.5% → 1.2%.
+- **The two-moment ceiling had been noise-limited.** The old oracle was limited by its own MC: scaling seal over three points (0.3023 → 0.1693 → 0.1315%) changed the verdict "two moments are insufficient in principle".
+- **The problem reduces to σ.** A recursion where m is propagated and σ, γ are oracle values (no matrices, 0.0015% of budget) gives 0.0807%. Requirement map: σ tolerates < 1% error, γ tolerates 30%. Derived: ∂m/∂σ = φ(t), G(t) = 2 − 2tΦ(−t)M/V, damping = ½⟨G⟩. 25% of neurons carry 74% of sensitivity.
+- **Partial channel fixes always hurt (three instruments).** C alone ×0.53, σ alone ×0.54, diagonal of C ×0.243, γ alone ×0.98.
+- **σ injection is pair non-Gaussianity.** 99.95% of the injection into σ is pair non-Gaussianity (Mehler truncation 0.05%); κ21 even with infinite samples lowers it only ×4.04 of the needed ×8.20, and end to end gives ×1.48 at 25% of budget.
+- **Closure-to-score translation.** The closure weight w = V/(V+E²) is a linear blend weight, but the score follows the harmonic V·E²/(V+E²), which goes to zero as E² → 0: the return on closure accuracy accelerates rather than saturating.
+- **No geometric accumulation model exists** (three refutations); G(t) holds only as a local identity. Bypassing σ is impossible: m = ∫₀^∞ P(h > x) dx depends on the whole distribution.
+- **λ families capped at 8 layers.** Extending them deeper made the grader 34% worse (×0.744). The cap was not about cost: λ* = Cov/(σ_Q² + N·b²), where b is the deterministic closure error, so a channel lives only where b_ℓ < σ_Q,ℓ/√N.
+- **Flat-budget theorem.** The score of pure MC is Kc/B and does not depend on the budget (N = 65 000 at u = 1 and N = 6500 at u = 0.1 give the same 6.741e-7). Leaving the floor requires w < P/(uB).
+- **Noise must be measured by redraws,** not derived from σ/√N: with variance-reduction channels the formula misses by √g = 1.3…1.65 and overstates the noise.
+- **Order four is the first uncontrolled moment of z.** Antithetics kill all odd orders exactly, whitening all quadratic forms exactly (seal g₀ = 5.5e5, relative Δ 1.2e-8). A fourth-order control variate with b ≡ 0 by Isserlis gives nothing.
+- **Maxent versus Edgeworth.** The Edgeworth series truncates optimally at κ4 (7× at depth), while a maxent density from the same 8 moments gives 31×: the 7× was a ceiling of the series, not of the moments.
+- **κ3 must enter m and C together.** Accumulated run (4 networks, truth 1e9): base 0.8440%; κ3 only in C 1.3321% (×0.40, harmful); only in m 0.8083% (×1.09); in both together ×3.88 in MSE.
+- **The "shaft" operator.** G = diag(Φ)·Wᵀ, taken from the weights alone, predicts the closure error of the next layer with cos 0.971, scale 1.00, R² 0.943 at depth (foreign control 0.083, without the gate 0.693).
+- **Stand versus evaluator, third divergence.** A torch stand gave ×4.53 for a κ3 correction; the real evaluator on the pure closure gave MSE 2.14e-5 → 3.49e-5 (×0.61).
+- **The network at depth is a ray.** cos(h(z), h(z′)) = 0.974 at layer 31 (theory θ ≈ 3π/ℓ → 0.954); exactly half of the neurons are on in every layer (0.491 ± 0.02); SNR grows 0.51 → 17.68 (t* = √SNR = 4.20).
+- **The closure step error is one-dimensional per coordinate.** Mehler K=24 with exact (μ, σ, ρ) for one step gives σ error 1.802%; a one-dimensional Edgeworth in (γ₃, γ₄) per neuron reduces it to 0.369% (×4.88; layer 7 ×12.94), E[relu] 0.139% → 0.030%. 79.5% of the σ error sits in the quadratic Edgeworth terms.
+- **What a top submission page revealed.** The leading phase-1 submission sat on the same budget floor (9.59% used), so the difference was entirely MSE.
+- **The mean channel carries everything.** Oracle m at every layer gives ×22.6…24.2 in MSE, the whole covariance on top only ×1.16: the 4.08% off-diagonal error is a consequence, not the bottleneck.
+- **The largest synergy of Phase 1 did not transfer.** Edgeworth on m alone ×1.34, oracle σ alone ×0.52, both ×113.94 (0.0783%), synergy ×164; with our own quantities it vanished.
+- **QMC is fully absorbed by whitening.** 8 networks × 8 draws, 8192 samples: iid 0.3059%, + antithetics 0.2570%, + whitening 0.2174% (our scheme), Sobol + whitening 0.2187%.
+- **A closure fed by sample quantities cannot beat the MC it is built from.** Injecting sample (σ, γ) into the recursion improves the pure closure (0.4851% → 0.321%), but the blend does not move.
+- **Edgeworth closed forms to fourth order** sealed by quadrature (rel. err ≤ 1.25e-44), but the correction to a₂ = E[ReLU·He₂] is 2…10× larger than the Gaussian term at working t.
+- **Edgeworth has no zone that is both useful and convergent.** Where the series converges the correction is tiny (1e-6…1e-3), where it is large it diverges (×2…×5 at the working point).
+- **Pair non-Gaussianity is third order.** 87% of the off-diagonal pair non-Gaussianity is carried by third-order cross-cumulants; fourth order adds nothing.
+- **Archive audit.** Plain MC is 0.1508%, not 0.187% (the latter came from a stand with noisy truth).
+- **ReLU gates κ3 element-wise** by Φ(t)⊗3 (error 2.2…8.1%), so the rank is preserved exactly and falls with depth; the generated part has a closed form (trilinear Mehler); κ3 removes ×3.2 of the diagonal error.
+- **The pruning criterion** "never opened in 256 pilot samples" cuts 17.4% of neurons against 11.2% truly dead, losing only 2e-9 of energy.
+- **Carrying κ3 through the 31-step recursion** gives ×1.614 (better than the gate operator on every network); the local generated part alone ×1.139.
+- **κ3 transport closed at every price point.** Payback thresholds 1.575 (3 matmuls) and 1.222 (1 matmul) against measured ×1.045…1.223 after the free scale.
+- **Per-network γ₃ is real.** The median is −0.107 at layer 31; a verdict of "zero" came from averaging a sign-changing quantity across 16 networks (mean 0.0032, std between networks 0.0906).
+- **Participation ratio is not CP rank.** A tensor of true rank 32 reads as PR 1.67; the two earlier PR numbers differed by calibration.
+- **κ3 is nearly rank one at depth** (PR 1.12, 99.84% in the top 16) and ReLU does not inflate it.
+- **Edgeworth does not overshoot for ReLU.** The 2× overshoot was measured on E|t|, which the estimator does not use; on E[ReLU] and E[ReLU²] slopes are 1.006…1.048 and 1.003…1.020 (24 networks, N = 1e8).
+- **Closed form for E[ReLU_j·ReLU_k] with third-order cross-cumulants.** The delta from ∂²ReLU collapses a dimension exactly; the correction uses only 1-D φ, Φ, ψ. One step on 1e8 truth removes 84…90% of the off-diagonal error.
+- **Line-by-line audit of the estimator.** Pruning indices, antithetics and blend are correct; a latent hard-coded 1/1024 and a no-op layer-0 pruning were found.
+- **Dual surface form.** Positive homogeneity plus Stein gives the exact identity E[f] = E[Δf], turning 10^700 cells into 8192 kink integrals; sealed numerically, closed by mechanism (it lives in the tail).
+- **Narrow deep networks die.** He init without bias at L = 32: P(survive) 0.000 at n = 2, 0.190 at 4, 0.970 at 8, 1.000 from 12. Stands below n = 12 have no object.
+- **Lowest draw taken as the level.** Twice in one evening the lowest of several draws was read as the level (a record and a per-network law).
+- **Pilot reuse on the right base is zero;** a balanced gate is zero (p = 0.89); casting weights to float32 breaks one network in 50 by ×3.9e6.
+- **A single scalar κ on C.** κ = 0.9985 on C for layers past the cutoff gives ×1.021 on the full split (p = 0.0013) at zero flops; ×1.0039 on the grader.
+- **No per-neuron lever.** The error is isotropic across 256 neurons; deterministic neuron selection gives exactly zero over random.
+- **After scale calibration the target is exactly a cosine loss,** so a per-network scale is free: +0.3…1.0% aggregate, sign test a tie.
+- **Spherical variance reduction is eaten by whitening** (×0.74 on top).
+- **Early layers are worthless.** Exact (m, C) on layers 1…2 gives ×1.009 in score even as an oracle; value grows with depth to ×3.7 at K = 24.
+- **ReLU masks carry non-moment information** (×17.7 over noise), but it varies too little between networks to be a lever.
+- **Scalar knobs on transport.** The scalar on transport of m has its optimum at exactly 1.0 (third measurement); a family of knobs gave ×1.046 on the pure closure but 25/50 and −0.45% in the full estimator, because m_deep feeds the blend twice.
+- **Euler-Stein identity.** E[out] = E[Δout] is exact, but needs the density at zero, which at t ≈ 3.5 lives in the tail and is an order more sensitive to non-Gaussianity (7.3% vs 0.107%).
+- **The network freezes with depth.** Median |t| grows 0.003 → 3.27; at layer 31 only 31% of neurons switch, 69% are fixed, which explains the saturation of the error as L^0.28.
+- **γ4 works only on near-exact moments.** A four-moment oracle gives 8.16e-9 (×22.8) on true (m, C), ×1.02 on ours; a tabulated γ4 fails the flipped-table control.
+- **Spectral (Wiener) blend.** A scalar blend over 256 directions ignores anisotropic MC noise (effective rank ~25); a Wiener weight Σ_e = e²·λ^ρ with ρ = 1.30 gives ×1.026 on cross-validation, but eigh costs 0.59% of the budget.
+- **Blend weight as a function of the network:** ceiling ×1.0293 with a full oracle, zero in practice, because avg_variance moves V_i and E²_i with nearly the same slope (0.551 and 0.502) and cancels in their ratio (corr 0.053).
+- **All-layer means for free.** Filling intermediate layer means from the recursion instead of zeros takes all_layers_mse 0.7889 → 1.908e-5 (×41 345) at zero flops (a secondary metric).
+- **1/n holds inside one network** (slopes −0.90…−1.14 on its own submatrices after He renormalisation), and the error shape transfers across widths (corr 0.40, foreign 0.004); but the difference of two closures gives ×1.22 on the raw error and ×0.9999 on the cosine error: pure scale.
+- **Linear correction in the closure basis** (8 vectors mp·Φ, s·φ, ×t, ×t², mp, s) has an oracle ceiling of ×1.0269; cos(mp·Φ, s·φ) = 0.035 at a norm ratio of 34.4.
+- **The backward operator is nearly singular.** B(l → 31) has effective rank 2.74 (l = 0), 5.78 (8), 11.2 (16), 23.9 (24), condition number 1e31; our error is isotropic in that basis (5.5…7.0% in the top 16 against 6.25%).
+- **RQMC (Roberts lattice + Cranley-Patterson)** alone ×1.22, on top of whitening ×1.0156 with sign test 12/24 and median ×0.9897: noise.
+- **96% of non-Gaussianity comes from dependence between neurons.** Shuffling each coordinate independently (marginals kept) drops γ4 from 0.3947 to 0.0142 at layer 31; γ4 × effective rank ≈ 1.
+- **Non-Gaussianity concentrates, but not where accuracy lives.** Projection-pursuit directions have |γ4| ×27 over PCA directions, but a non-Gaussian basis gives ×0.563 against ×1.15 for PCA: a direction's contribution to E[ReLU] scales with its variance.
+- **Effective rank of C** (trC)²/‖C‖_F² costs 0.008% of budget and matches the sampled rank at layer 1 to four digits (165.7 vs 165.6) but diverges at depth (4.5 vs 2.8); forcing it to 2.8 ruins the answer ×123.
+- **α must be refitted with each change.** α inherited from a configuration without per-network scale had its optimum at −0.0092 instead of −0.00679 on 100 networks.
+- **Local split versus grader test set.** Of five networks named on a grader panel only one is in the local public dataset, which explains why local effects were 4…5× larger than on the grader.
+- **All four exactly known truths of the problem.** Second moments of z (whitening ×2.34, works), norm of z (sphering ×0.74), fourth moments of z (corr 0.017 against a foreign 0.05, zero), E[h₁] (control variate ×1.14, works).
+- **The full split has 1000 networks with exact truth,** so deterministic hypotheses can be tested in minutes on 1000 networks.
+- **Mixing metrics.** Effective rank 165.8 → 2.24, half-life 4.83 layers, frozen share 0.943; the closure knows the mixing directions (cos 0.991) but underestimates concentration 1.53×.
+- **A third free knob: a multiplier on the gate argument.** m = mp·Φ(g·t) + s·φ(g·t) with g = 1.04: cross on 400 networks ×1.0263/×1.0212 (sign test 283/400), +0.55% in the full estimator together with α = −0.0085.
+- **The grader API reports MSE separately** (deterministic to 17 digits, multiplier noise 0.048%), raising grader resolution from 0.1% to about 0.001%.
+- **Evolutionary search over step expressions** converges to constants already found by hand; g varies across networks (sd 3.7%), κ is practically constant (sd 0.15%).
+- **γ4 switches on gradually** with moment accuracy (×1.10 → ×2.39 → ×4.50); the operational target for 1e-8 is |Δm|/m improved 16×.
+- **A rank-r non-Gaussian step kernel** removes 17% of the step error at a threshold of 20%; even full removal would give ×1.111: the error for 1e-8 lies in accumulation.
+- **The leverage of accuracy is not constant:** d log(score)/d log(accuracy) = 0.22 at ×1.5, 0.30 at ×2, 0.55 at ×4, 0.85 at ×8, 1.07 at ×15. Six transport correction families tested on the cosine error: four structural ones gave zero.
+- **Rank-truncating the sample forward pass** is dead with a ceiling: the mildest mode (k = 64 on layers ≥ 24) has a bias of 0.377% against a threshold of 0.06%.
+- **A learned per-neuron correction works** (196 608 examples): ×1.0311 in cosine accuracy cross-network, foreign control λ* → 0; the same idea as "a model outputs network constants" failed four times.
+- **The step error is exactly Edgeworth with per-neuron γ.** R² 0.983 (cos −0.9915) with per-neuron γ; with tabulated γ exactly zero (cos +0.0003), because the table describes projections, and per-neuron γ₃ has mean 0.000 with sd 0.42.
+- **Ideal two-moment closure.** Oracle (m, C) on every layer gives about 5.3e-8 (≈ 5th place); the C channel alone is empty (×1.012) and the true diagonal of C breaks the recursion ×8.5.
+- **Perfect-step ceiling ×1.19.** Injecting the exact step error into the real recursion gives ×1.19 in accuracy and ×1.03 in score, while 1e-8 needs ×14.9; the step accounts for 16% of the error.
+- **The truth in the dataset is itself MC** (1e9 samples, floor avg_variance/1e9 = 4.95e-11); a top panel decoded with four seals shows layer 0 computed exactly and layers 1…30 not computed at all.
+- **A comparison error.** "×53 above us even with an oracle" compared our adjusted score with another team's raw MSE and an outdated board; the correct distance from the ideal two-moment closure was ×7.7 to #2.
+- **Low-rank co-kurtosis** closed without a run: an earlier oracle already substituted per-neuron γ₃, γ₄ on our (m, C) and gave ×1.02.
+- **External replication of our central ceiling.** Another team's write-up measured the same two-moment ceiling: 8.83e-7 against our 7.58e-7 (16%), layer-0 truth noise 6.72e-10 against 6.87e-10 (2%).
+
+- **The two angle constants are not overfitted.** A 5 × 5 grid over (κ, g) on all 1000 networks of the full split with exact truth confirms κ = 0.9985 as the optimum (third independent confirmation); transferring the optimum from 50 networks to the other 950 costs exactly ×1.00000.
+- **Rate-distortion bound for one quantisation scheme.** Round-to-nearest quantisation of the weights shows that about 10 bits per weight suffice for the answer at our accuracy; this bounds that scheme, not methods that compute arbitrary statistics from W.
+- **Virtual weights.** out(z) = z@M_D exactly, so E[out] is a pure covariance between the realised map and the input (shuffled gates give 0.96 of the own floor). The ensemble of M has rank ≥ 343 and does not saturate, so mixtures of k virtual linear maps are dead.
+- **Strassen in flopscope operations.** Flop tariff: level 1 ×0.8860, level 2 ×0.7962, level 3 ×0.7350; level 2 was the optimum for our cost structure because the residual is a per-call tax.
+- **Score = a·p/B.** a is variance per sample, p the price per sample; above the floor the score does not depend on N. Checked on two submissions to 5%: our a was 1.49× better than a rival's, our p 1.89× worse.
+- **Network weights as inputs.** As samples ×0.6 (bias +73%); as an anchor ×1.014 at ×0.981 cost (zero); as centroids R² 3.055% against random 1.164%, but post-stratification gives ×0.85.
+- **Strassen on the full estimator gives ×1.07, not ×1.26** (100 networks, 5 configurations): flops are saved, but the planner spends the freed budget on samples and the residual takes half.
+- **Whitening zeroes control variates built from the first layer.** Whitening plus antithetics remove 15.18× of a relu(p0) control variate; a deterministic conjugate map gives ×1.0096 instead of ×1.226 against bare MC.
+- **The collapse at depth is caused by the nonzero mean of ReLU, not by the kink.** Rank 2.96 and cos 0.97 with ReLU; a centred sigmoid on the same weights gives cos −0.0007 and rank 8.21.
+- **Pruning optimum is 22%, not 17%** (+7% in score); the old integer-threshold grid sat on both sides of it.
+- **Centring restores width.** Participation ratio 77 → 249 (×3.2); rare neurons have the widest channel to the output (1.26) at amplitude 0.059.
+- **Deterministic cubature on mutually unbiased bases** (17 true MUBs, |⟨v,w⟩| = 1/16 exactly for all pairs) gives only ×1.02 in MSE against whitened antithetic MC, with error falling exactly as 1/N.
+
+## Phase 2 (1024 wide, 16 deep), from 23.08.2026
+
+### Late August 2026: first runs, what transfers, the two-moment ceiling
+
+- **The closure and MC swap roles at 1024×16.** The phase-1 estimator ran unchanged after refitting constants: closure 0.5070% → 0.1264% (×4.01 better), MC 0.1454% → 0.2404% (×1.65 worse), so the closure is the stronger branch for the first time; retuning gave about 2.5×.
+- **The edge "pheromone"** A[i,j] = E[x_i·1{p_j>0}] gives the exact identity m = Σ_i W·A, but 92.3% of its residual against the Gaussian twin (layer 14) is an outer product of two node errors: E[x] ⊗ Δgates (corr 0.999/0.848) and ΔE[x] ⊗ gates.
+- **State-memory ladder.** First curve of state size against error: a one-step oracle on 1024×16 gives r = 0 (independent neurons, exact marginals) 0.6580% → r = 64 0.1238% → a plateau of 0.0789% only at r ≈ 256 → full C 0.0800%. Correlations are worth ×8.2.
+- **Bit budgets.** flopscope charges per element (matmul 2MKN, f64 ×1.999, element-wise 0.5 per element), so packing two numbers into one element would halve the price; measured element-wise needs: activations above 12 bits (5 bits break), the state tolerates 8 bits, weights need 12.
+- **Per-neuron γ4 vanishes at width 1024:** 0.060 against 0.385 in Phase 1 (×6.4), the central limit theorem gaussianises the marginals; the largest Phase 1 lever (per-neuron γ on exact moments, ×22.8) is empty here.
+- **A basis aimed at conductance or sensitivity** loses to the plain eigenbasis of C at r = 64: eigen 0.1370%, conductance 0.2009%, sensitivity 0.402%.
+- **Stochastic transport.** Unbiased noise in the off-diagonal of C (projected to PSD, diagonal restored) smoothly erases correlations: 0.2382 → 0.3718 (ε = 0.01) → 0.8339 (0.03) → 1.3456 (0.10) → 1.5231 (0.30), toward the no-correlation level 1.55%.
+- **Gate discrepancy is an observable error signal.** Δq = P(p>0)_true − Φ(t) is observable without truth and is exactly the channel found in the edge decomposition.
+- **A learned shape correction.** In Phase 2 the "better step" class is worth ×1.32 in score (×1.03 in Phase 1), all of it in the component of the step error orthogonal to the signal (the scale component gives zero); a learned linear correction on 16 correlation features gives ×1.042 on unseen networks.
+- **Weighting samples by activation norms** has an oracle ceiling of ×1.026 after control, although the correlation of a sample's error with log‖x_l‖² is real (−0.21 at depth, 16σ) and grows with depth.
+- **Transferring the closure error from a neighbouring parameter point** is tautological at first order (the MC minus closure difference there equals the blend vector already in use): oracle ×1.0006, cross ×1.0001 on a leaky-ReLU homotopy.
+- **The exact anchor is where the variance is not.** Control variates relu(zW₀)@A have an exactly known mean for any A, but give zero (a foreign-A control ×1.0154 beats the signal at every rank 2…32): the only exact anchor is at layer 1, while output variance is born deep.
+- **Strassen level 2 and a λ block ×2.4** together give +9.6% over the first Phase 2 submission; the 0.4 s residual cap makes level 3 structurally out of reach.
+- **Our A/B error bar is 1.73%,** and with it the λ gain shrank from +1.51% to +0.20% on an independent sample, while Strassen held.
+- **Batched Strassen unblocks depth 4.** 85% of Strassen's residual came from 18 additions on every one of 7^l calls, not from concatenation; batching the additions per level opened levels 3 and 4, which had previously zeroed every network.
+- **Batched Strassen level 4 on the grader: +21.2%**, more than the local stand (+13.8%), the first time the local split understated a gain; residual held with a margin of ×1.10.
+- **A deeper control-variate cutoff hurts monotonically** (11 → ×0.942, 15 → ×0.659); the residual of the same code varies ×1.095 between runs at a margin of 0.8%.
+- **Per-neuron decomposition in Phase 2.** |t| fell 3.50 → 2.21, so the σ channel is alive (×60); s is underestimated by 0.98% with corr(δs/s, |t|) = −0.88, and the true s alone gives ×1.33. A bug in all our oracle m injections was found (a mixed pair), which had understated the m channel.
+- **Repairing the closure with the sample mean** gave ×1.165 (12/12, control passed) with synthetic noise and exactly zero (×1.002, 6/12) with real samples: the difference is the structure of the noise, so a noise surrogate must be measured.
+- **The full two-moment ceiling in Phase 2 is ×11.1** (true m and full C): adjusted 1.25e-8, while 1e-8 needs ×13.9. The off-diagonal of C is 35% wrong and that costs exactly zero.
+- **The covariance residual is rank one along the mean.** C_true − C_our is 92% a rank-one term c·mp mpᵀ with c ≈ 0.003, measured on two independent banks; any partial move of C toward the truth makes the output monotonically worse.
+- **The step error is spread in proportion to variance** across directions, so low-dimensional quadrature in the top subspace is dead (with a spectral control).
+- **The attractor exists but is a typical sample,** 230× coarser than the closure as a predictor of the centre.
+- **Gate-frequency deviation** is real and grows with depth but is orthogonal to the step error; an apparent correlation of −0.33 was shared sample noise.
+- **Layer-cake decomposition of the mean error** over thresholds: the peak in the 2…4s zone migrates with depth and 73% cancels between neurons; it belongs to the "better step" class.
+- **Local truth noise invalidated the two-moment ceiling.** The noise of the 400k-sample truth (0.0475% at the final layer) is larger than the measured ceiling of 0.0381%, and the oracle took m from the same run as the target; the honest ceiling is adjusted 1.72e-8, not 1.25e-8.
+- **The two-moment class is exhausted.** An exact two-moment closure by sampling gives 0.1227% after removing estimate noise; our recursion 0.1202%. The distance to the top splits into accumulation ×3.5 and beyond-moment structure ×2.2.
+- **The two-moment state is information-insufficient by ×5.** Perfect (m, C) at layer 8 with exact sampling afterwards still leaves 0.0841% (×5.2 above the top); re-gaussianisation costs only ×1.40.
+- **The reachable set is an isotropic cone.** Gradient ascent reaches cos 0.486 (layer 2) … 0.188 (layer 12) with a weight direction against 0.034 for the best of 4096 samples, but a foreign vector gives the same numbers; the edge lies about 19 sd from the cloud and does not enter E[ReLU].
+- **Five Phase 1 verdicts do not transfer.** PR of the Jacobian J_{0→15} is 32.0 against 2.74 (backward reconstruction is no longer degenerate), the error is not isotropic in the eigenbasis of Cov(h), and three more architecture-specific verdicts changed.
+- **The 8-feature bias model gives exactly zero in Phase 2.** R² on b/s 0.564, on the shape b⊥/s 0.000; LOO substitution ×1.0000 (0/8).
+- **The whole step error lives in the tail term.** relu(p) = p + (−p)₊, so E[relu(p)] = m_p + E[(−p)₊], and m_p = m_l@W is exact given exact m_l: the entire step error sits in one tail term.
+- **Local truth noise is 15.4% of our MSE** (400k samples, floor 1.81e-7); it had never been subtracted and understated every local improvement.
+- **α was fitted in the wrong configuration.** Scanned on the pure closure but used in the blend, it was off by 0.0003, costing ×1.064; the right value is derived as mean(a_i) − 1.
+- **The two-moment ceiling was a Gaussian last-step ceiling.** Per-neuron γ₃ on exact moments gives adjusted 1.42e-9, 5× better than the top at the time.
+- **γ₃ switches on only when mp and sd are both exact** (synergy ×8.4): targets mp ≲ 0.05%, sd ≲ 0.7%; a more accurate sd alone can hurt.
+- **Bank noise floor by layer** (mp 0.0715% → 0.0152%) and the transfer function of the s channel (0.672 → 0.070) measured without truth; the mp error is born on layers 2…4.
+
+### Early September 2026: per-neuron γ₃, dependence, where the value is
+
+- **Per-neuron γ₃ works on our own moments at deep layers.** In the recursion on layers 9…15 it gives ×1.13 at c = 0.40; four earlier measurements had used shallow layers or c = 1.
+- **Confirmed on the grader** (×1.0547). Injecting truth into middle layers hurts even the raw closure: any improvement must act at the output or on all layers.
+- **Closed form for κ3(ReLU(N(μ, σ²)))** is correct (corr 0.81 at layer 1), but the diagonal approximation gives only 2.2% of the amplitude at layer 15: 97.8% of per-neuron γ₃ comes from dependence between neurons.
+- **Two viable budget regimes.** For our method the full budget becomes worthwhile only when E² < 1.4e-7, a ×9.6 closure improvement.
+- **All collapse points of the pipeline** (where information is merged into one number) measured: per-layer merging ≤ ×1.0055 on cross-validation; per-neuron has a ceiling of ×1.23 but needs the realised error itself.
+- **Inter-neuron correlation drives the closure error.** Intervention shows e ∝ ρ^1.4, but ρ ≈ 0.08 is the same for all He-init networks (spread ×1.13): no lever.
+- **The step residual is exactly γ₃ + γ₄.** At true moments 99.9% of the empirical step residual is γ₃ + γ₄; nothing beyond them.
+- **All value is in the last layer.** True (mp, sd) on layer 15 alone give ×9.99 in MSE, as much as on all 16; a perfect full covariance everywhere gives only ×1.37.
+- **SNR of sample estimates decides every branch in advance.** The spread of a quantity across neurons divided by the noise of its 6144-sample estimate: γ₃ alive only deep, γ₄ dead, correlations SNR 17.7.
+- **Balance beats information.** An exact correction with R² 0.999 must still be shrunk to c ≈ 0.4; three alternative explanations (double counting, dd inconsistency and one more) were refuted by measurement.
+- **Higher-order dependence.** Destroying all dependence changes the output by 1%; gaussianising with true (μ, Σ) costs 0.06% per layer; the top 74 directions of Σ carry ≥ 68% of the higher structure.
+
+### September to October 2026: pair cumulants, κ4 anatomy, production chains
+
+Some entries below revisit Phase 1 networks; they are marked (256×32).
+
+- **Both step residuals are third order.** The covariance step residual is explained by mixed third cumulants κ_aab at 99.6% (pair Edgeworth); per-neuron γ₃ of pre-activations lives in the top-r input subspace (r = 74: 72…76%, r = 256: 93%; random subspace 0.6%).
+- **Hybrid "exact in the top-k subspace, conditionally Gaussian elsewhere"** on the last step: k = 64 removes only ×2, a random basis almost the same; non-Gaussianity is isotropic. Amplitude knobs on κ3 are all dead.
+- **κ3 from samples is noise-limited.** Estimating κ_aab from N samples instead of an oracle gives an error ∝ c²/N (three points); off-diagonal noise breaks mp through the covariance step; a gain needs N ≥ 1e5 = 1.5 budgets.
+- **Oracle ladder of pair cumulants on official networks** (8 mini networks, moments from 1e8 samples): true κ21 0.0185%, + per-neuron γ4 0.0162%, + κ22/κ31 in the covariance step 0.0118%, all three 0.0050% (about 2.4e-9 MSE). All are pair objects.
+- **Carriers for κ21 at the true state.** The (2,1,1) hub with the true state has R² 0.97, but the output equals the base: all of the value is in the fine part (outside the top 64, R² 0.3); diagonal generation reaches ×0.2 of the amplitude.
+- **Self-consistent κ21 feedback into κ3 birth** (E[He₃He₁He₁] ∋ 3κ21ρ) on our own state: 0.0529% → 0.0386% on 8 official networks, ×1.75…1.88 in MSE; the first carrier of the fine part of κ21. In production it costs util 0.369 against 0.137, so the score is worse.
+- **The (3,1) slice is the lever on the V29 chain, (2,2) hurts.** Oracle on the 504aldo chain (GPU, 8 official mini networks): true κ31 in the readout 2.20 → 1.795e-8 (×1.22); true κ22 hurts (2.52e-8), because the additive form (κ4_i + κ4_j)/2 already has R² 0.92…0.99.
+- **The κ3 birth error is not a finite-size function of W.** A feature grammar from W alone explains R² 0.015, against 0.14 for a state feature.
+- **κ5 is a tree function of κ3 and κ4.** Per-neuron κ5 of pre-activations = c(l)·κ3κ4/κ2 with R² 0.85…0.92 (94…97% of the noise ceiling) on layers 10…15; c is the same across networks (3…5%) and drifts 3.0 → 2.5 with depth; κ4 is not expressible through κ3².
+- **A dense κ4 core** (rank-one G) is λC_off plus a low-rank residual; rank 64…96 takes all the value (×1.13) and beats the full G, but in the regenerated chain the true G breaks it.
+- **Error birth map of the V29-line chain.** A per-network knob is dead by ceiling (oracle α_i ×1.02); on 100 official mini networks MSE 2.229e-8 (sd/mean 0.14); absolute MSE ∝ avg_var^0.6, relative MSE tracks gate saturation.
+- **The D21 residual is sea error.** The ×1.68 of the D21 oracle is not transported by the slice (injecting the true slice residual into the state gives ×1.035); it is born from the (1,1,1) sea of κ3, which is 13…15% wrong on layers 12…14.
+- **Backpropagation through the chain is feasible** after a patch (truncation SVD/eigh detached, truncation as projection), but the graph needs about 1.7 GB per layer.
+- **The D21 slice must be dense.** Rank truncation (range finder) to 512 gives MSE ×1.26, to 256 ×2.7, to 64 ×9.5 on 3 dumps.
+- **κ4 sea memory carrier.** Sea diagrams (κ3 hub plus a C edge) transport without their own memory and explain the true κ4 sea with cos 0.8; feeding them into κ3 birth gives MSE ×1.07 on 3 dumps.
+- **Flop profile of the V29 chain** by section and operation, an ablation ladder of term families, and a ceiling of ×1.29 in score for the whole "cheaper representation" direction.
+- **Hub column truncation.** Keeping half of the young-source hub columns gives D21 error 66% at layer 0 and 6% at layer 13; hub energy is flat early (53% in the top half) and concentrated only deep (92%).
+- **Hub column importance.** The chain adjoint is not an importance measure (corr with finite differences 0.14); finite-difference importance is real (linearity 0.50, additivity 0.74…0.94), and 40% of columns are harmful, but the sign is unpredictable.
+- **(2,1,1) slice of κ4 into κ3 birth is the sea lever.** On the reference with true inputs, the hub birth of the κ3 sea errs by 10.8%/7.4% per step; the true (2,1,1) slice through one diagram removes ×3.7, all of κ4 ×8.6; our carrier took a quarter.
+- **The chain error is a zero-mean random reweighting of hub columns.** e = Σ c_j f_j with nearly orthogonal column traces and c_j of zero mean and spread O(1); 64 columns of a layer hold 14…33% of ‖e‖² (control 6%).
+- **Closure error is a clean 1/n law (256×32).** p = 1.002 ± 0.055 (per layer 1.00 ± 0.005), but the law sets only the size; the direction is 39% network-specific, so the class ceiling is 2.57× in closure MSE, 1.047× in score.
+- **1/n extrapolation.** Local slope at n = 24…32 is −1.15/−1.10, but an extrapolation safeguard failed (miss ×1.52) and the anchor at n = 256 gives an effective slope of −1.457.
+- **Exact symmetries sealed on the chain.** z → −z ≡ W₀ → −W₀ holds bit for bit in both the research and production chains (fnp, Strassen, fp32); permuting neurons of a layer changes the output by 3.7e-7 (research) and 1.7e-5 (production, fp32 noise).
+- **What separates 1e-8 from 1e-11 at the last step.** With true per-neuron cumulants of p15: Gaussian 1.9e-7 → + γ₃ 2.15e-8 (equal to our chain, 2.20e-8) → + γ₄ 9.8e-10 (at the truth-noise floor).
+- **The sea has zero conditional mean** given any pair state (fresh W, E[WWWW] = 0 for distinct indices), so the K=3 chain is the conditional expectation of the truth given its state.
+- **κ3 at depth is transported, not born (256×32).** The linearised transport y = u@(a₁⊙W) reproduces the true κ3 with cos 0.996, scale 1.014 on layers 20…31 (foreign control 0.26).
+- **True κ21 on the V29 chain is ×1.68**, and with true κ31 ×2.72. The chain's D21 error grows from 3.4% (layer 1, truth noise) to 6.9% (layer 15); the residual is low-rank (top 16 = 70% at layer 15).
+- **The chain's commit log.** 15 source commits per final number, each 1.2…4.2‖e‖; commits of different births and deliveries of one source at different ages are pairwise orthogonal (|cos| ≤ 0.08); sources are non-additive by 23…25%.
+- **Flow operator rank by age.** The linearised flow T_{l→15} has a 99%-energy rank of 99 from layer 0 (age 15), 183 (age 7), 272 (age 4), 397 (age 2), 525 (age 1), which matches the production age truncation.
+- **The κ3 birth error is truncation at k_max = 3** of the cumulant expansion with exact full cumulants; k_max = 4 plus κ5 cuts the (1,1,1) part 3.4% → 1.5%.
+- **Accuracy anatomy.** Mean field 2.3e-4 → K=2 4.1e-6 (×59) → our chain 2.2e-8 (×188); one step with exact per-neuron cumulants: Gaussian 2e-7, + γ₃ 2e-8, + γ₄ ≤ 1e-9; the chain MSE is about the sum of step errors over layers.
+- **Data-dependent compute in other submissions.** Grader telemetry shows two top teams' flops varying across networks (cv 2.95%, corr 0.94 between them) and tracking the share of saturated neurons |t| > 3; ours were fixed.
+- **K=3 class ceiling with true pair cumulants** up to fourth order: 1.085e-9 (×20.3 over the base 2.20e-8); the true diagonal of κ4 alone gives little.
+- **Crowns of the error tree.** Removing the crown of the mean error after every layer: k = 16 ×1.17, k = 4 ×1.85, full means ×4.9; groups by t equal random groups, so the errors are exchangeable across neurons.
+- **Hierarchical low rank (vortex / FMM / HODLR) is dead.** On C_off and the true D21, ordering by t or spectrally equals random ordering; no geometry to exploit.
+- **Turbulence closure analogy.** Quasi-normal = our Gaussian step, EDQNM = damping of κ3 by age, realisability = PSD covariance; damping 0.85/0.70 is monotonically worse.
+- **Accuracy frontier against MC by cost.** Regenerated chain 2.199e-8, dense variant 1.813e-8 (×1.21), LOO mixture of 12 chains 1.535e-8 (×1.43); MC with antithetics and whitening would need 31…45 grader budgets to match.
+- **A κ4 predictor from chain sources** (telescope of births, no samples) on the 25% most sensitive neurons: ×1.255 alone, ×1.213 on top of the dense variant, together ×1.471, 8/8 networks.
+- **Exact flop profile by role** (a hook on the budget charge, sum equal to flops_used bit for bit): young sources 45.8% (hub 23.6, transport 22.2), old-basis machinery 34.6%, covariance 6.5%, feed/D3 7.4%.
+- **Compressing 1024 → 128.** Kronecker/TT structure of W is Gaussian noise; a smooth basis equals random; a critical-sensitivity projector (99.9% of sensitivity in 152…267 directions) on κ3 sources at k = 256 is ×67 worse.
+- **Back-casting the true mean.** The μ error is flat across layers (0.008…0.015%); linearised transport explains 80% (cos 0.77…0.91), 15…20% is born each layer; neuron features do not predict its sign.
+- **Antithetic mixtures of chains** (opposite perturbations of λ ±30%, κ4 diagonal ±50%, W vs −W) give ×1.005, ×1.003 and weight 0.
+- **How MC damps the error** on one layer (10⁶ points): exactly 1/√N; per weight error 1.7e-5, sum over 1024 is 32× not 1024× (independent signs); MC and chain errors are independent.
+- **Switching ReLU on neuron by neuron from the first layer:** cos with the full E[out] ≈ 0 up to 6 layers, 0.5 at 14, 1 only at 16; the scale grows ×√2 per layer without ReLU.
+- **Mirror network.** h = λ + m exactly, all of the mean is in m, but m has σ 280 against 0.32 in h and layer contributions cancel ×90.
+- **Dead rows in transport and hub.** Dropping dead rows (α < −2.5) in young-leg transport and hub: flops ×0.944…0.965, MSE ±1%, score ×1.033…1.063 on 3 networks; alignment to 128 rows is required.
+- **Longer life of young sources near the output** (age 6 on layers ≥ 12): ×1.0141 on 10 networks, 9/10 better; from layer 10 it is worse.
+- **Symmetry tags buy free budget (256×32).** A symmetric tag on the operand plus a three-way einsum gives ×0.751 on W C Wᵀ; the einsum 'ia,ib->ab' ×0.502; Cholesky instead of eigh ×0.212: 0.26% of budget for free.
+- **Mean correction on the fresh step.** A ridge table of 87 features fitted on step_l = y_l − (y_{l−1}@W_l)·Φ_l, not on the free run, gives ×1.085 (48/50) in emulation.
+- **Fixed transported basis for old κ3 sources (FIJA).** Score ×1.041 on 10/10, flops −7.5%, MSE +3.9%; old rank 416 on top ×1.014.
+- **Strassen buffer arenas** cut RAM 17 → 5 GB and wall time 100 → 70 s; 32-row alignment gives ×1.014 on the first network of a process and ×0.996 on the second; reshape is charged numel of the input.
+- **Learning curve of an output corrector on chain state** (gradient boosting, 147 per-neuron features): 10 → 80 networks gives R² −0.001 → +0.010; with thousands of networks other teams later reached ×0.887.
+- **Criticality is the root (256×32).** Negative weights 50.003%, switched-off neurons 50.2% per layer: b = 0 is a cusp; a bias of 0.15 makes the task six times easier.
+- **Chain mixtures and term knobs.** A mixture of regenerated and dense chains gives ×1.24…1.36 LOO but needs two chains; multipliers on 35 term groups inside one chain ×1.012.
+- **No cheap place for error along age × layer.** All five gate points lose; 1% of flops costs 4…10% of MSE.
+- **The ladder of worse rungs.** Errors of nine cheaper chain variants (MSE ×23…75) are orthogonal to the top error (cos 0.02…0.2), so extrapolating along the ladder fails.
+- **Another chain as the base.** A public K=3 chain gave ×1.26 over ours on 4 networks, FIJA on top another ×1.03; its corrector does not port into our chain (×2.3…2.56 worse); an MLP on 90 networks ×0.990 against ridge.
+- **A flopscope-to-cupy shim** runs the chain on GPU in 3.8…4.2 s per network instead of 35 s on CPU; the bottleneck was cusolver gesvd, replaced by eigh of a float64 Gram (rank-k rel 1.9e-7).
+- **The LT2 corrector is at its feature ceiling.** Further training on 1660…3708 unseen networks, output multipliers and graph-kernel genetic programming all give zero.
+- **K=4 state (256×16 exact stand).** Old κ4 groups compressed to rank n/4 in a covariance basis beat full K=4 on 3/3 networks (×0.71…0.77, regularisation); young groups are incompressible at birth.
+- **Oracle ladder on another chain.** True mean at layer K: ×1.03 (4), ×1.13 (7), ×1.43 (10), ×2.05 (12), ×5.1 (14); diagonal variance, k3 and k4: exactly zero.
+- **κ4 diagrams cancel in pairs** (star against path and three-leg, cos −0.9…−0.95), but the merged kernel is not low-rank.
+- **Cost profile by code line** (C/B 0.160): κ3 slice readout 43.5%, young-leg transport 26%, old basis 9.5%, W·C and C_pre 9%; matmul 86%; K=4 within budget is dead.
+- **Pair-state oracle at layer 14.** True m and off-diagonal C after ReLU give ×9.2 raw (C alone ×1.10, m alone ×5.0); the curve is quadratic; rank 128 of the C correction keeps almost all.
+- **Break curves.** Gaussian with true (μ, σ) overestimates E[ReLU] by 1e-3 σ universally (|t| < 2), but the chain already takes this; its residual 3.6e-4 σ has no shape in t (cross R² 0.00).
+- **C oracle on a set of layers** has a ceiling of ×1.48 (plateau from layer 8), ×1.26 from half the MC; the chain error at layer 14 is distributed over the sphere like a Gaussian (top 1% = 3.7% vs 3.6%), so FORM/SORM is dead.
+- **Pre-activation κ3 slices are accurate on live neurons** (corr 0.998…0.999), but the true ones still give ×1.4/×1.19; two apparent structures were pruning artefacts.
+- **Realisation sea trees** are computable at n³ (star, chain), correlate 0.46 with per-neuron γ4 and exactly (0.9999) with the chain state, but move the output only ×1.04…1.05.
+- **A shrunk K=4 beats the exact K=4.** Factor 0.7 on all κ4 sources gives MSE ×2.6/×6.0/×2.9 better than full K=4 (128×16); pruning sources by norm or at random only switches κ4 off.
+- **Code review of the best submission** across all mathematical operations, FIJA conditioning, flop profile and knob scans: no errors and no cheap levers.
+- **The step error is per-neuron pre-activation κ3, κ4.** Edgeworth with true γ3, γ4 removes the step error ×50; the chain knows c3 with corr 0.84 and c4 with 0.74; true c3 + c4 on all layers give ×1.90.
+- **State corrections die by common-mode amplification.** Output derivatives along 12 feature directions are 2.5…6× the whole error, while the true c3 residual moves the output only 0.37× of it (balance ×10).
+- **The K=3 chain misses the four-distinct part entirely and half of (2,1,1).** Decomposition of true c4/c3 (layers 12…14, 3 networks): (2,2) kept, (1,1,1,1) lost (coefficient 0.9…1.0), half of (2,1,1) lost (0.4…0.56).
+- **Short-lived κ4 births keep the full value at 128.** Groups living one transport keep 0.69…1.19 of the K=4 gain over K=3 for 73 u instead of 367; lifetime 2…4 equals or beats full (regularisation).
+- **TT formulas of κ4 birth readouts** sealed to 1e-15 (n = 6/32/128, lifetimes 1 and 2); at 1024 with the true state, simple birth explains only about 30% of the variance of the true abcd part.
+- **Cost profile by line of the best submission** (young tier 45%, old about 28%); dropping D21 ×0.1…0.18; κ5 diagonal, weight and mask sorting, compressed corrections: all closed; MSE ∝ n^−3.75.
+- **κ4 pieces at 1024.** The (2,2) regeneration ansatz already equals the exact transport W²K22W²ᵀ (corr 0.99, scale 1.00); a β blend gives ×0.976…0.997; the chain's K22 is underestimated to ×0.72 at depth, but correcting it breaks the balance (×0.21…0.95).
+- **Retraining the LT2 corrector on the ALG058 chain** (1000 networks) gives held-out 0.952…0.954 (0.875 on the other chain); the package was about ×1.07 over the previous record.
+- **True κ4 slices in the best chain hurt.** Substituting true (2,2) gives ×0.90; the true shape at the ansatz level ×0.987: the loss comes from the level, and the chain holds its balance at an underestimated level.
+- **(3,1) orientation.** The first (3,1) oracle had the slice transposed (×0.804); in the correct orientation it is neutral (×1.009) and best shrunk to 0.75 (×1.055).

@@ -11,6 +11,7 @@ Our best estimators are built on public code of other participants; see [`NOTICE
 ## Start here
 
 * [`CLOSED_BRANCHES.md`](CLOSED_BRANCHES.md): every branch we closed in both phases, one row each, with the measured result, the type of verdict (ceiling, mechanism or circumstance), why it died and the stand that measured it.
+* [`EXPERIMENTS.md`](EXPERIMENTS.md): every experiment of both phases in chronological order, about 500 entries with their numbers, controls and verdicts.
 
 ## Layout
 
