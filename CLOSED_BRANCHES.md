@@ -9,7 +9,7 @@ Conventions:
 - **ceiling**: the branch was closed by substituting the exact quantity (an oracle), so no implementation can do better than the number shown.
 - **mechanism**: closed by a measured cause, not by its price.
 - **circumstance**: closed by price, sample size or another condition; the reason to return is named.
-- Stands are under `stands_phase1/side66/` (Phase 1) and `stands/` (Phase 2). The full log with every number is in [`research_log/`](research_log/README.md).
+- Stands are under `stands_phase1/side66/` (Phase 1) and `stands/` (Phase 2).
 
 ## The four laws that killed most branches
 
@@ -27,7 +27,7 @@ Conventions:
 | exact 2-D quadrature instead of Mehler K=2 | ×1.001 | ceiling | the step formula is already exact; the Gaussian hypothesis in the recursion is what fails | `decomp99.py` |
 | κ3 in the recursion (carried, rank-r CP, one matmul) | ×1.045…1.223 against a threshold of 1.575 | mechanism | more than half of what κ3 fixes is scale, which a free scalar α takes for nothing | `k3cost97.py`, `k3diag97.py`, `hmat_k3.py` |
 | γ4 table in the recursion | ×1.027, but a flipped-sign control gives ×1.013 | mechanism | half the gain is a foreign table; with oracle γ4 on exact (m, C) ×22.8, on ours ×1.02 | `gam101.py`, `orac101e.py` |
-| Edgeworth series in the recursion | ×0.80…0.83 | mechanism | where the series converges it is tiny, where it is large it diverges (a₂ = 2.07 at t = 3.5) | Phase 1 log §С95, §С97 |
+| Edgeworth series in the recursion | ×0.80…0.83 | mechanism | where the series converges it is tiny, where it is large it diverges (a₂ = 2.07 at t = 3.5) | Phase 1 write-up (forum 18182) |
 | scalar knobs on transport (kap, mu, lam, beta, tau) | closure ×1.046, LOO 50/50; grader ×0.9955 | mechanism | m_deep is used twice (prediction and fit anchor); stands that see one branch miss the other | `scan101.py` |
 | linear correction in the closure basis (up to 8 terms) | ×1.027 oracle ceiling | ceiling | at t ≈ 3.5, E[ReLU] ≈ m and the other terms have weight 1/34 | `split101.py` |
 | hybrid: closure to layer K, then MC from N(m_K, C_K) | ×0.067 with our (m, C) | mechanism | the hybrid keeps the closure bias instead of averaging it | `hyb101.py` |
@@ -42,10 +42,10 @@ Conventions:
 | fixing the sample (4th moments, quality of a draw) | corr between networks +0.012 ± 0.146 = control | mechanism | there is no universal sample quality, MC error is network-specific | `qual102.py` |
 | robust estimators (winsorising) | ×0.874 | mechanism | the output tail is only 1.22 times heavier than Gauss | `extreme102.py` |
 | blend weight as a function of the network | ceiling ×1.029, realisable ×0.967 | ceiling | the proxy pulls both V and E² equally, their ratio does not move | `blend101.py`, `varpred101.py` |
-| spectral (Wiener) blend by direction | cross ×1.013 | circumstance | eigh costs 0.59% of the budget, the net is +0.1% | Phase 1 log §С101 |
-| non-uniform sample allocation across networks | in-sample ×1.064, cross-seed ×0.978 | mechanism | the score is separable, the optimum is uniform; 67% of the V spread is noise | Phase 1 log §С98 |
-| cheaper pruning threshold for dead neurons | K=2 ×0.955, K=8 ×0.365 | mechanism | the current criterion already cuts 17.4% against 11.2% truly dead | Phase 1 log §С97 |
-| float32 in the submission | one network ×3.87e6 worse | mechanism | loss of range on one network ruins the average | Phase 1 log §С99 |
+| spectral (Wiener) blend by direction | cross ×1.013 | circumstance | eigh costs 0.59% of the budget, the net is +0.1% | Phase 1 write-up (forum 18182) |
+| non-uniform sample allocation across networks | in-sample ×1.064, cross-seed ×0.978 | mechanism | the score is separable, the optimum is uniform; 67% of the V spread is noise | Phase 1 write-up (forum 18182) |
+| cheaper pruning threshold for dead neurons | K=2 ×0.955, K=8 ×0.365 | mechanism | the current criterion already cuts 17.4% against 11.2% truly dead | Phase 1 write-up (forum 18182) |
+| float32 in the submission | one network ×3.87e6 worse | mechanism | loss of range on one network ruins the average | Phase 1 write-up (forum 18182) |
 
 ## Phase 2 (1024×16)
 
@@ -54,7 +54,7 @@ Conventions:
 | exact (2,2) slice of pre-activation κ4 | ×0.904 | ceiling | balanced errors; the slice shape adds nothing at 1024 (×0.987) | `lt2alg/orac22/` |
 | exact (3,1) slice, correct orientation | ×1.009; shrunk 0.75 ×1.055 (gain from one network of three) | ceiling | neutral; again "the optimal correction is shrunk" | `lt2alg/orac22/run_orac31t.py` |
 | exact (2,2) and (3,1) together | ×0.977 | ceiling | the pair does not rescue the (2,2) harm | `lt2alg/orac22/run_orac31t_both.py` |
-| K22 birth set to truth | ×0.21 (half ×0.65) | mechanism | the tables are fitted to the underestimated birth | Phase 2 log 21…22.10 |
+| K22 birth set to truth | ×0.21 (half ×0.65) | mechanism | the tables are fitted to the underestimated birth | write-up §4.2 |
 | exact transport of the (4) and (2,2) slices (blind grader scan) | ×0.85 / 0.70 / 0.59 / 0.47 at blend 0.3 / 0.5 / 0.7 / 1.0 | mechanism | at 1024 the regeneration ansatz already is the exact transport (corr 0.99) | `night_oracle_scan/` |
 | TT readout of (4), star term | MSE unchanged, cost +19% | mechanism | width averages the fluctuations that carry the gain at 128 | `night_oracle_scan/337662_tt`, `337665_star` |
 | learned corrections to the state from chain features | ≤×1.02, LOO ×0.98…1.00 | mechanism | common modes (law 3) | `dig/`, write-up §4.4 |

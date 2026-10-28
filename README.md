@@ -11,7 +11,6 @@ Our best estimators are built on public code of other participants; see [`NOTICE
 ## Start here
 
 * [`CLOSED_BRANCHES.md`](CLOSED_BRANCHES.md): every branch we closed in both phases, one row each, with the measured result, the type of verdict (ceiling, mechanism or circumstance), why it died and the stand that measured it.
-* [`research_log/`](research_log/README.md): the project memory, 708 dated records with every number (in Ukrainian), browsable from an index.
 
 ## Layout
 
