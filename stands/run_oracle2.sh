@@ -1,0 +1,9 @@
+#!/bin/bash
+export PYTHONPATH=/home/trim/leanpkg:/mnt/win_d/llm/White-Box/whest-starterkit/kprop_reference
+export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=GPU-eaa8132f-e46f-2090-d943-0481fbe03aef LEAN_DEV=cuda
+cd /home/trim/wb2lean
+L=/home/trim/wblogs/lean_oracle2.log; echo "== start $(date)" >> $L
+echo "== regen fit (dumps 0,1)" >> $L
+/home/trim/notqa-venv/bin/python3 -W ignore lean_oracle.py 0,1 regen fit 2>&1 | grep -v Warning >> $L
+for w in 0.5 1.5; do echo "== regen k31 W31=$w" >> $L; W31=$w /home/trim/notqa-venv/bin/python3 -W ignore lean_oracle.py 0,1,2,3,4,5,6,7 regen k31 2>&1 | grep -v Warning | grep MEAN >> $L; done
+echo DONE_ORACLE2 >> $L

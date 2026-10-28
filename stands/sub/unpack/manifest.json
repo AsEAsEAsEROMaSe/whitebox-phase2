@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "api_version": "2.0",
+  "entrypoint": {
+    "module": "estimator",
+    "class": "Estimator"
+  },
+  "python": {
+    "min_version": "3.12"
+  },
+  "files": [
+    {
+      "name": "estimator.py",
+      "sha256": "e36415569f9c31f69715f42132accbd21392889152d166d1e179b82bd583da04"
+    }
+  ],
+  "created_at_utc": "2026-09-19T17:19:53.555329+00:00",
+  "packager_version": "0.1.0",
+  "whestbench_version": "0.16.0",
+  "flopscope_version": "0.12.0",
+  "python_version": "3.12.3",
+  "numpy_version": "2.4.6"
+}

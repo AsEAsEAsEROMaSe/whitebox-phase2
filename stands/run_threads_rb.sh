@@ -1,0 +1,5 @@
+#!/bin/bash
+until grep -q DONE_DENSE_A /home/trim/wblogs/dense_birth.log && grep -q DONE_PIECES_B /home/trim/wblogs/pieces_b.log; do sleep 20; done
+export PYTHONPATH=/home/trim/leanpkg:/mnt/win_d/llm/White-Box/whest-starterkit/kprop_reference
+export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=GPU-bff69481-0d35-74f0-8871-68eb429cdc34 LEAN_DEV=cuda
+cd /home/trim/wb2lean; OMP_NUM_THREADS=4 /home/trim/notqa-venv/bin/python3 -W ignore -u threads_rb.py 2>&1 | grep --line-buffered -vE "Warning|warn"
