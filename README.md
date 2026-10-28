@@ -29,6 +29,9 @@ stands/               research stands, oracles and analysis scripts behind §3�
   s32lt/                port of LT2 into s32refire, the fast layer
   dig/                  probes of the error map, common modes, sea and birth diagrams
   bench/                cost benchmarks (Strassen ladder, dtypes)
+stands_phase1/        stands of Phase 1 (256×32) and of the start of Phase 2, the results that §8 of the write-up stands on
+  side66/               main Phase 1 stand folder (oracles, closure ceilings, κ, masks, width extrapolation, …)
+  s76_*/, viz/, wbstand/   smaller groups of probes
 tools/pack_s32f.sh    how the s32f packages were built and checked (AST, archive equals source)
 writeup/              the report, Markdown and PDF, English and Ukrainian
 ```
@@ -43,7 +46,7 @@ whest run --estimator submissions/337654_midA --dataset <snapshot root of arc-wh
 
 ## Notes on the stands
 
-* They are research scripts, kept as they were run. Paths are absolute to our machine, GPU pinning is by device UUID, and comments and logs are mostly in Ukrainian.
+* They are research scripts, kept as they were run (helper scripts for local chat models were removed). Paths are absolute to our machine, GPU pinning is by device UUID, and comments and logs are mostly in Ukrainian.
 * Monte Carlo data, trained weight files (`*.npz`) and run logs are not included because of size; they are available on request.
 * Every number in the write-up comes from these stands or from the grader; the write-up names the stand next to the number where it matters.
 
