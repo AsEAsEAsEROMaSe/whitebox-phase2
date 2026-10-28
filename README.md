@@ -8,6 +8,11 @@ Code and stands of team **trim_qewas** for the ARC White-Box Estimation Challeng
 
 Our best estimators are built on public code of other participants; see [`NOTICE.md`](NOTICE.md). The contribution we claim is the measurement work described in the write-up, and the stands here are what produced its numbers.
 
+## Start here
+
+* [`CLOSED_BRANCHES.md`](CLOSED_BRANCHES.md): every branch we closed in both phases, one row each, with the measured result, the type of verdict (ceiling, mechanism or circumstance), why it died and the stand that measured it.
+* [`research_log/`](research_log/README.md): the project memory, 708 dated records with every number (in Ukrainian), browsable from an index.
+
 ## Layout
 
 ```
