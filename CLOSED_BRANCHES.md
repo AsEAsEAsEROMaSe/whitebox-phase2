@@ -15,7 +15,7 @@ Conventions:
 
 1. **Balanced errors.** A tuned closure is a system of errors that cancel. Putting the exact value into one channel breaks the cancellation: true diagonal of C ×0.118 (Phase 1), exact (2,2) slice of κ4 ×0.904 (Phase 2), K22 birth set to truth ×0.21. The best correction is a shrunk one, never the exact one.
 2. **Channels multiply.** Gains from fixing two channels together far exceed the product of solo gains (σ ×0.52 alone, Edgeworth ×1.34 alone, together ×113.9 in Phase 1; C ×1.33, c3/c4 ×1.85, together ×4.5…6.4 in Phase 2). Any idea that fixes one channel is dead before it is written.
-3. **Common modes.** The output is 2.5…6 times more sensitive to feature directions of the state than its whole error; the truth is balanced in those modes by a factor of 10. Any learned correction of the state with R² below about 0.95 misses by more than the whole error.
+3. **Common modes.** The output is 2.5…6 times more sensitive to feature directions of the state than its whole error; the truth is balanced in those modes by a factor of 10. Any learned correction of the state with R² below about 0.95 misses by more than the whole error. This kills corrections fitted to a local target; a correction trained through the rest of the chain on the final error does not face it in the same way (see the Phase 2 row below).
 4. **The sea has zero conditional mean.** Over the ensemble of W, terms with all-distinct indices average to zero given the pair state, so the K=3 chain is Bayes-optimal in its class. Features of the pair state cannot predict the sign of the residual.
 
 ## Phase 1 (256×32)
@@ -57,7 +57,7 @@ Conventions:
 | K22 birth set to truth | ×0.21 (half ×0.65) | mechanism | the tables are fitted to the underestimated birth | write-up §4.2 |
 | exact transport of the (4) and (2,2) slices (blind grader scan) | ×0.85 / 0.70 / 0.59 / 0.47 at blend 0.3 / 0.5 / 0.7 / 1.0 | mechanism | at 1024 the regeneration ansatz already is the exact transport (corr 0.99) | `night_oracle_scan/` |
 | TT readout of (4), star term | MSE unchanged, cost +19% | mechanism | width averages the fluctuations that carry the gain at 128 | `night_oracle_scan/337662_tt`, `337665_star` |
-| learned corrections to the state from chain features | ≤×1.02, LOO ×0.98…1.00 | mechanism | common modes (law 3) | `dig/`, write-up §4.4 |
+| learned corrections to the state from chain features, fitted layer by layer | ≤×1.02, LOO ×0.98…1.00 | mechanism | common modes (law 3); applies to local fits only: heads trained end to end through a differentiable twin of the whole chain did work for the Phase 2 winner (marius_binner, forum 18302, about ×0.82 in score) | `dig/`, write-up §4.4 |
 | residual predictor of c3/c4 with corr 0.9 / 0.7 / 0.5 | ×0.061 / 0.039 / 0.049 | mechanism | the chain is hypersensitive to incoherent noise; only ρ ≥ 0.95 helps | write-up §4.2 |
 | scalars on D3, D21, g4row, λ | optimum exactly 1.0 everywhere | mechanism | the chain sits on its trade-off line | write-up §4.2, §4.6 |
 | κ4 from a low rank of the state (top-r eigenvectors, r 4…64) | ×0.10 (zero) to ×0.34 (random 32) | ceiling | the missing c4 is the abcd part, invisible to low rank | write-up §4.3 |
